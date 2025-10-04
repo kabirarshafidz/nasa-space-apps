@@ -1,0 +1,48 @@
+"use client";
+
+import { useState } from "react";
+import ModelTrainer from "@/components/model-trainer";
+import ModelPredictor from "@/components/model-predictor";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Globe } from "lucide-react";
+import Link from "next/link";
+
+export default function Home() {
+  return (
+    <div className="min-h-screen  p-4 sm:p-8">
+      <div className="max-w-7xl mx-auto">
+        <header className="text-center mb-8 sm:mb-12">
+          <h1 className="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent mb-3">
+            TESS Exoplanet Detection
+          </h1>
+          <p className="text-slate-600 dark:text-slate-400 text-lg mb-6">
+            Train and test machine learning models for exoplanet detection
+          </p>
+          <Link href="/3d-visualization">
+            <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white">
+              <Globe className="w-4 h-4 mr-2" />
+              Explore 3D Exoplanet Systems
+            </Button>
+          </Link>
+        </header>
+
+        <Button variant={"default"}> <h1 >HAHAHHAH</h1></Button>
+        <Tabs defaultValue="train" className="w-full">
+          <TabsList className="grid w-full max-w-md mx-auto grid-cols-2 mb-8">
+            <TabsTrigger value="train">Train Models</TabsTrigger>
+            <TabsTrigger value="predict">Make Predictions</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="train">
+            <ModelTrainer />
+          </TabsContent>
+
+          <TabsContent value="predict">
+            <ModelPredictor />
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  );
+}
