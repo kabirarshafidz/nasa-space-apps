@@ -62,6 +62,7 @@ export default function PredictPage() {
     toi: "",
     toipfx: "",
   });
+  const [planetData, setPlanetData] = useState<any[]>([]);
 
   // Custom hooks
   const { isLoading, predictionResults, handlePredict } = usePrediction();
@@ -111,6 +112,18 @@ export default function PredictPage() {
       );
 
       if (result) {
+        // Prepare planet data for chatbot
+        let planetDataArray: any[] = [];
+        if (predictionType === 'batch' && result.csvText) {
+          // Import the CSV parser
+          const { parseCSVToObjects } = await import('./utils/csvParser');
+          planetDataArray = parseCSVToObjects(result.csvText);
+        } else {
+          planetDataArray = [{ ...singleFeatures, ...metadata }];
+        }
+
+        setPlanetData(planetDataArray);
+
         // Fetch planet type classifications
         await fetchPlanetTypeClassifications(
           result.results.metadata || [],
@@ -261,6 +274,9 @@ export default function PredictPage() {
             <PlanetTypeClassification
               planetTypeChart={planetTypeChart}
               planetTypeClassifications={planetTypeClassifications}
+              planetData={planetData}
+              predictionResults={predictionResults}
+              modelInfo={preTrainedModels}
             />
           </div>
         );
@@ -275,13 +291,9 @@ export default function PredictPage() {
       <div className="container mx-auto px-4 py-8 max-w-7xl">
         {/* Header */}
         <div className="mb-8">
-          <Link href="/">
-            <Button variant="ghost" className="mb-4">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back to Home
-            </Button>
-          </Link>
-          <h1 className="text-4xl font-bold mb-2">Exoplanet Prediction</h1>
+          <h1 className="text-4xl font-bold mb-2">
+            Predict Exoplanets from Your Data
+          </h1>
           <p className="text-muted-foreground">
             Use machine learning models to predict exoplanet candidates
           </p>

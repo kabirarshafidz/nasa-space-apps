@@ -8,16 +8,23 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { BarChart3, MessageSquare } from "lucide-react";
-import { PlanetTypeClassification as PlanetTypeClassificationType } from "../types";
+import { PlanetTypeClassification as PlanetTypeClassificationType, PredictionResults, PreTrainedModel } from "../types";
+import { PlanetChatbot } from "./PlanetChatbot";
 
 interface PlanetTypeClassificationProps {
   planetTypeChart: string | null;
   planetTypeClassifications: PlanetTypeClassificationType[];
+  planetData?: any[];
+  predictionResults?: PredictionResults;
+  modelInfo?: PreTrainedModel[];
 }
 
 export function PlanetTypeClassification({
   planetTypeChart,
   planetTypeClassifications,
+  planetData = [],
+  predictionResults,
+  modelInfo = [],
 }: PlanetTypeClassificationProps) {
   return (
     <Card>
@@ -69,131 +76,15 @@ export function PlanetTypeClassification({
             </div>
           </div>
 
-          {/* AI Agent - 1/3 width */}
+          {/* AI Chatbot - 1/3 width */}
           <div className="col-span-1">
-            <div className="bg-black rounded-lg h-192 flex flex-col shadow-lg overflow-hidden">
-              <div className="bg-gradient-to-r from-purple-600 to-purple-700 p-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-md">
-                    <MessageSquare className="w-5 h-5 text-purple-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-white font-semibold text-lg">
-                      AI Agent
-                    </h3>
-                    <p className="text-purple-200 text-xs">
-                      Planet Type Assistant
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Classification Summary */}
-              <div className="flex-1 space-y-3 mb-4 overflow-y-auto p-4">
-                {planetTypeClassifications.length > 0 ? (
-                  <>
-                    <div className="bg-white/15 backdrop-blur-sm rounded-lg p-3 border border-white/20">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                        <span className="text-white text-xs font-medium">
-                          AI Classification
-                        </span>
-                      </div>
-                      <p className="text-blue-100 text-xs leading-relaxed mb-2">
-                        I&apos;ve classified {planetTypeClassifications.length}{" "}
-                        exoplanet(s) using KNN:
-                      </p>
-                      <div className="space-y-2">
-                        {planetTypeClassifications
-                          .slice(0, 3)
-                          .map((classification, idx) => (
-                            <div
-                              key={idx}
-                              className="bg-black/30 rounded p-2 text-xs"
-                            >
-                              <div className="flex justify-between items-center">
-                                <span className="text-purple-300 font-mono font-semibold">
-                                  {classification.toi}
-                                </span>
-                                <span
-                                  className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                    classification.type_name === "Sub-Neptune"
-                                      ? "bg-blue-500/30 text-blue-200"
-                                      : classification.type_name ===
-                                        "Ultra-Giant"
-                                      ? "bg-purple-500/30 text-purple-200"
-                                      : classification.type_name ===
-                                        "Super-Earth"
-                                      ? "bg-green-500/30 text-green-200"
-                                      : "bg-gray-500/30 text-gray-200"
-                                  }`}
-                                >
-                                  {classification.type_name}
-                                </span>
-                              </div>
-                              <div className="text-gray-300 text-xs mt-1">
-                                Confidence:{" "}
-                                {(classification.type_confidence * 100).toFixed(
-                                  1
-                                )}
-                                %
-                              </div>
-                            </div>
-                          ))}
-                        {planetTypeClassifications.length > 3 && (
-                          <p className="text-gray-400 text-xs text-center">
-                            +{planetTypeClassifications.length - 3} more...
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="bg-white/15 backdrop-blur-sm rounded-lg p-3 border border-white/20">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className="w-2 h-2 bg-green-400 rounded-full"></div>
-                        <span className="text-white text-xs font-semibold">
-                          Type Legend
-                        </span>
-                      </div>
-                      <div className="space-y-1 text-xs text-blue-100">
-                        <div className="flex items-center gap-2">
-                          <div className="w-3 h-3 bg-blue-500 rounded"></div>
-                          <span>Sub-Neptune: 2-4 R⊕</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="w-3 h-3 bg-purple-500 rounded"></div>
-                          <span>Ultra-Giant: &gt;10 R⊕</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="w-3 h-3 bg-green-500 rounded"></div>
-                          <span>Super-Earth: 1-2 R⊕</span>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="bg-white/15 backdrop-blur-sm rounded-lg p-3 border border-white/20">
-                    <div className="flex items-center gap-2 mb-2">
-                      <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
-                      <span className="text-white text-xs font-medium">
-                        AI Agent
-                      </span>
-                    </div>
-                    <p className="text-blue-100 text-xs leading-relaxed">
-                      Analyzing planet types using KNN classification...
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Info Footer */}
-              <div className="px-4 pb-4">
-                <div className="bg-white/10 rounded-lg p-2 text-center">
-                  <p className="text-white/70 text-xs">
-                    Classification based on type_labels.csv ground truth
-                  </p>
-                </div>
-              </div>
+            <div className="h-192">
+              <PlanetChatbot
+                planetData={planetData}
+                predictionResults={predictionResults}
+                planetTypeClassifications={planetTypeClassifications}
+                modelInfo={modelInfo}
+              />
             </div>
           </div>
         </div>
