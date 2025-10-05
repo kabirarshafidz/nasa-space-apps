@@ -90,8 +90,7 @@ export default function ThreeDVisualization() {
             TESS Exoplanet Systems - 3D Visualization
           </h1>
           <p className="text-muted-foreground">
-            Explore {solarSystems.length} solar systems with accurate orbital
-            mechanics
+            Explore 1100+ solar systems with accurate orbital mechanics
           </p>
           <div className="mt-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-md">
             <p className="text-sm text-amber-600 dark:text-amber-400">
@@ -250,7 +249,7 @@ export default function ThreeDVisualization() {
                 ); // meters (SI)
                 const isInHZ =
                   orbitRadiusMeters >=
-                  selectedSystem.habitableZone.innerMeters &&
+                    selectedSystem.habitableZone.innerMeters &&
                   orbitRadiusMeters <= selectedSystem.habitableZone.outerMeters;
 
                 return (
