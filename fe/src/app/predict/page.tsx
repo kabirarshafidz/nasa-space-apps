@@ -67,6 +67,7 @@ export default function PredictPage() {
     "single"
   );
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
   const [singleFeatures, setSingleFeatures] = useState<SingleFeatures>({
     pl_orbper: "",
     pl_trandurh: "",
@@ -85,6 +86,8 @@ export default function PredictPage() {
     toi: "",
     toipfx: "",
   });
+
+  const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4 MB
 
   const [planetData, setPlanetData] = useState<any[]>([]);
 
@@ -393,7 +396,23 @@ export default function PredictPage() {
   };
 
   const handleFileUpload = (file: File | null) => {
-    setUploadedFile(file);
+    if (file) {
+      // Validate file size
+      if (file.size > MAX_FILE_SIZE) {
+        const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+        setFileError(
+          `File size (${sizeMB} MB) exceeds the maximum limit of 4 MB. Please upload a smaller file.`
+        );
+        setUploadedFile(null);
+        return;
+      }
+      // Clear any previous errors
+      setFileError(null);
+      setUploadedFile(file);
+    } else {
+      setUploadedFile(null);
+      setFileError(null);
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -406,10 +425,23 @@ export default function PredictPage() {
     e.stopPropagation();
 
     const files = e.dataTransfer.files;
-    if (files && files[0] && files[0].name.endsWith(".csv")) {
+    if (files && files[0]) {
+      if (!files[0].name.endsWith(".csv")) {
+        setFileError("Please upload a CSV file");
+        return;
+      }
+      // Validate file size
+      if (files[0].size > MAX_FILE_SIZE) {
+        const sizeMB = (files[0].size / (1024 * 1024)).toFixed(2);
+        setFileError(
+          `File size (${sizeMB} MB) exceeds the maximum limit of 4 MB. Please upload a smaller file.`
+        );
+        setUploadedFile(null);
+        return;
+      }
+      // Clear any previous errors
+      setFileError(null);
       setUploadedFile(files[0]);
-    } else {
-      alert("Please upload a CSV file");
     }
   };
 
@@ -439,6 +471,7 @@ export default function PredictPage() {
             onFileUpload={handleFileUpload}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
+            fileError={fileError}
           />
         );
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useTrainParams } from "./useTrainParams";
 import {
   Stepper,
@@ -109,7 +109,7 @@ interface TrainingEntryData {
   modelF1Score: string | null;
 }
 
-export default function TrainPage() {
+function TrainPageContent() {
   // Prevent hydration mismatch by only rendering after mount
   const [isMounted, setIsMounted] = useState(false);
 
@@ -128,7 +128,7 @@ export default function TrainPage() {
   const [showTrainingSteps, setShowTrainingSteps] = useState(false);
   const [isLoadingSessions, setIsLoadingSessions] = useState(true);
   const [usingExistingCSV, setUsingExistingCSV] = useState(false);
-  const maxSize = 100 * 1024 * 1024; // 100MB
+  const maxSize = 4 * 1024 * 1024; // 4 MB
 
   // Load sessions on mount
   useEffect(() => {
@@ -813,5 +813,28 @@ export default function TrainPage() {
         </Dialog>
       </div>
     </div>
+  );
+}
+
+export default function TrainPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex flex-col h-[calc(100vh-4rem)]">
+          <div className="px-10 py-8 w-full flex-1 overflow-y-auto">
+            <div className="max-w-7xl w-full mx-auto">
+              <div className="mb-8">
+                <h1 className="text-3xl font-bold text-primary-foreground mb-2">
+                  Train New Model
+                </h1>
+                <p className="text-primary-foreground/70">Loading...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      }
+    >
+      <TrainPageContent />
+    </Suspense>
   );
 }

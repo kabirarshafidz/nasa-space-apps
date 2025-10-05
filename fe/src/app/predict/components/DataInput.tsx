@@ -25,6 +25,7 @@ interface DataInputProps {
   onFileUpload: (file: File | null) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
+  fileError?: string | null;
 }
 
 export function DataInput({
@@ -38,7 +39,16 @@ export function DataInput({
   onFileUpload,
   onDragOver,
   onDrop,
+  fileError,
 }: DataInputProps) {
+  const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4 MB
+  const formatBytes = (bytes: number) => {
+    if (bytes === 0) return "0 Bytes";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${Math.round(bytes / Math.pow(k, i))} ${sizes[i]}`;
+  };
   return (
     <Tabs
       value={predictionType}
@@ -153,10 +163,13 @@ export function DataInput({
                 onDrop={onDrop}
               >
                 <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground mb-4">
+                <p className="text-sm text-muted-foreground mb-2">
                   {uploadedFile
                     ? `Selected: ${uploadedFile.name}`
                     : "Click to upload or drag and drop a CSV file"}
+                </p>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Max file size: {formatBytes(MAX_FILE_SIZE)}
                 </p>
                 <Button
                   variant="outline"
@@ -177,6 +190,25 @@ export function DataInput({
                   onChange={(e) => onFileUpload(e.target.files?.[0] || null)}
                 />
               </div>
+
+              {fileError && (
+                <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950 rounded-lg border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm">
+                  <svg
+                    className="w-5 h-5 shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  <span>{fileError}</span>
+                </div>
+              )}
 
               {uploadedFile && (
                 <div className="flex items-center justify-between p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">

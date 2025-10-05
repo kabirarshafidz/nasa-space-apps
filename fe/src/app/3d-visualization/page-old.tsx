@@ -271,7 +271,7 @@ function getPlanetColor(eqTemp: number, isInHZ: boolean): string {
 
 // Parse CSV data
 async function parseCSVData(): Promise<SolarSystem[]> {
-  const response = await fetch("/api/tess-data");
+  const response = await fetch("/tess.csv");
 
   if (!response.ok) {
     // Fallback: try to load from public folder or use sample data
@@ -1067,7 +1067,7 @@ export default function ThreeDVisualization() {
                 ); // meters (SI)
                 const isInHZ =
                   orbitRadiusMeters >=
-                    selectedSystem.habitableZone.innerMeters &&
+                  selectedSystem.habitableZone.innerMeters &&
                   orbitRadiusMeters <= selectedSystem.habitableZone.outerMeters;
 
                 return (

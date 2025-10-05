@@ -10,7 +10,7 @@ import { SCENE_SCALE } from "./constants";
  * Parse CSV data from TESS and organize into solar systems
  */
 export async function parseCSVData(): Promise<SolarSystem[]> {
-  const response = await fetch("/api/tess-data");
+  const response = await fetch("/tess.csv");
 
   if (!response.ok) {
     console.warn("Could not fetch from API, using sample data");
