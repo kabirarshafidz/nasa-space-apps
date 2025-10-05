@@ -21,39 +21,50 @@ interface PlanetProps {
 export function Planet({ planet, index, speedMultiplier }: PlanetProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const textRef = useRef<any>(null);
-  const [hovered, setHovered] = useState(false);
-  const [clicked, setClicked] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
   const [trailPoints, setTrailPoints] = useState<THREE.Vector3[]>([]);
   const maxTrailLength = 50;
   const updateCounter = useRef(0);
   const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Auto-hide info after 3 seconds when clicked
-  useEffect(() => {
-    if (clicked) {
-      // Clear any existing timer
-      if (hideTimerRef.current) {
-        clearTimeout(hideTimerRef.current);
-      }
+  // Handle hover start - show info immediately and clear any pending hide timer
+  const handleHoverStart = (e: any) => {
+    e.stopPropagation();
+    document.body.style.cursor = "pointer";
 
-      // Set new timer to hide after 3 seconds
-      hideTimerRef.current = setTimeout(() => {
-        setClicked(false);
-      }, 3000);
+    // Clear any pending hide timer
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
     }
 
-    // Cleanup on unmount
+    setShowInfo(true);
+  };
+
+  // Handle hover end - start 3 second timer to hide info
+  const handleHoverEnd = (e: any) => {
+    e.stopPropagation();
+    document.body.style.cursor = "default";
+
+    // Clear any existing timer
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+    }
+
+    // Set new timer to hide after 3 seconds
+    hideTimerRef.current = setTimeout(() => {
+      setShowInfo(false);
+    }, 3000);
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
     return () => {
       if (hideTimerRef.current) {
         clearTimeout(hideTimerRef.current);
       }
     };
-  }, [clicked]);
-
-  const handleClick = (e: any) => {
-    e.stopPropagation();
-    setClicked((prev) => !prev); // Toggle on click
-  };
+  }, []);
 
   useFrame((state) => {
     if (meshRef.current) {
@@ -113,24 +124,15 @@ export function Planet({ planet, index, speedMultiplier }: PlanetProps) {
         ref={meshRef}
         args={[displayRadius, 32, 32]}
         position={[planet.orbitRadiusScene, 0, 0]}
-        onPointerOver={(e) => {
-          e.stopPropagation();
-          setHovered(true);
-          document.body.style.cursor = "pointer";
-        }}
-        onPointerOut={(e) => {
-          e.stopPropagation();
-          setHovered(false);
-          document.body.style.cursor = "default";
-        }}
-        onClick={handleClick}
+        onPointerOver={handleHoverStart}
+        onPointerOut={handleHoverEnd}
         castShadow
         receiveShadow
       >
         <meshStandardMaterial
           color={planet.color}
           emissive={planet.color}
-          emissiveIntensity={hovered || clicked ? 0.5 : 0.25}
+          emissiveIntensity={showInfo ? 0.5 : 0.25}
           roughness={0.3}
           metalness={0.3}
         />
@@ -144,12 +146,12 @@ export function Planet({ planet, index, speedMultiplier }: PlanetProps) {
         <meshBasicMaterial
           color={planet.color}
           transparent
-          opacity={hovered || clicked ? 0.2 : 0.1}
+          opacity={showInfo ? 0.2 : 0.1}
         />
       </Sphere>
 
-      {/* Show info on hover OR click */}
-      {(hovered || clicked) && (
+      {/* Show info on hover (stays for 3s after hover ends) */}
+      {showInfo && (
         <Text
           ref={textRef}
           position={[planet.orbitRadiusScene, displayRadius + 0.15, 0]}

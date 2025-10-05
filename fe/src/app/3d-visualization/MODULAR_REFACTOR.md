@@ -175,7 +175,7 @@ useEffect(() => {
             value={[speedMultiplier]}
             onValueChange={(v) => setSpeedMultiplier(v[0])}
             min={0.1}
-            max={10}
+            max={5}
             step={0.1}
           />
           <p className="text-xs text-center mt-2">

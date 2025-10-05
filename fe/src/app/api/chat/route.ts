@@ -55,13 +55,290 @@ interface PredictionResults {
 }
 
 interface PlanetTypeClassification {
+  id?: string;
   toi?: string;
+  PC1?: number;
+  PC2?: number;
+  type_cluster?: number;
   type_name?: string;
+  type_confidence?: number;
   confidence?: number;
   [key: string]: unknown;
 }
 
 /* ------------------------------ Tool Executors ------------------------------ */
+
+function toolPCAClassificationSummary(
+  classifications: PlanetTypeClassification[],
+  pcaMetadata?: { pca_var_explained?: [number, number]; kmeans_k?: number }
+): string {
+  console.log('[Tool] toolPCAClassificationSummary called with', {
+    classificationsCount: classifications.length,
+    hasPCAMetadata: !!pcaMetadata
+  });
+
+  if (classifications.length === 0) {
+    return 'No PCA classification data available. Please run predictions first to see PCA-based planet type classifications.';
+  }
+
+  // Count by cluster
+  const clusterCounts = new Map<number, number>();
+  const clusterNames = new Map<number, string>();
+
+  classifications.forEach(c => {
+    const cluster = c.type_cluster ?? -1;
+    clusterCounts.set(cluster, (clusterCounts.get(cluster) || 0) + 1);
+    if (c.type_name) clusterNames.set(cluster, c.type_name);
+  });
+
+  // Average confidence per cluster
+  const clusterConfidences = new Map<number, number[]>();
+  classifications.forEach(c => {
+    const cluster = c.type_cluster ?? -1;
+    const conf = c.type_confidence ?? c.confidence;
+    if (typeof conf === 'number') {
+      if (!clusterConfidences.has(cluster)) clusterConfidences.set(cluster, []);
+      clusterConfidences.get(cluster)!.push(conf);
+    }
+  });
+
+  const clusterStats = [...clusterCounts.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([cluster, count]) => {
+      const name = clusterNames.get(cluster) || `Cluster ${cluster}`;
+      const confidences = clusterConfidences.get(cluster) || [];
+      const avgConf = confidences.length > 0
+        ? confidences.reduce((a, b) => a + b, 0) / confidences.length
+        : 0;
+      const percentage = ((count / classifications.length) * 100).toFixed(1);
+      return `  ${name}: ${count} planets (${percentage}%) - Avg confidence: ${(avgConf * 100).toFixed(1)}%`;
+    });
+
+  const lines = [
+    'PCA-based Planet Type Classification Summary',
+    '===========================================',
+    `Total classified: ${classifications.length} planets`,
+    ''
+  ];
+
+  if (pcaMetadata?.kmeans_k) {
+    lines.push(`K-Means clusters used: ${pcaMetadata.kmeans_k}`);
+  }
+
+  if (pcaMetadata?.pca_var_explained) {
+    const [pc1, pc2] = pcaMetadata.pca_var_explained;
+    lines.push(`PCA variance explained: PC1=${(pc1 * 100).toFixed(1)}%, PC2=${(pc2 * 100).toFixed(1)}%`);
+    lines.push(`Total variance captured: ${((pc1 + pc2) * 100).toFixed(1)}%`);
+  }
+
+  lines.push('');
+  lines.push('Classification breakdown:');
+  lines.push(...clusterStats);
+  lines.push('');
+  lines.push('Note: Classifications based on PCA (Principal Component Analysis) + K-Means clustering + KNN prediction.');
+
+  return lines.join('\n');
+}
+
+function toolFilterByCluster(
+  planetData: PlanetRecord[],
+  classifications: PlanetTypeClassification[],
+  clusterNumber?: number,
+  typeName?: string,
+  limit: number = 25
+): string {
+  console.log('[Tool] toolFilterByCluster called with', {
+    clusterNumber,
+    typeName,
+    limit,
+    planetDataCount: planetData.length,
+    classificationsCount: classifications.length
+  });
+
+  // Build classification map
+  const classMap = new Map<string, PlanetTypeClassification>();
+  classifications.forEach(c => {
+    const key = c.id || c.toi || '';
+    if (key) classMap.set(key, c);
+  });
+
+  // Merge planetData with classifications
+  const merged = planetData.map(p => {
+    const key = p.toi || p.toipfx || '';
+    const classification = classMap.get(key);
+    return { ...p, ...classification };
+  });
+
+  // Filter by cluster or type name
+  let filtered = merged.filter(p => {
+    if (clusterNumber !== undefined && p.type_cluster === clusterNumber) return true;
+    if (typeName && p.type_name?.toLowerCase().includes(typeName.toLowerCase())) return true;
+    return false;
+  });
+
+  if (filtered.length === 0) {
+    return `No planets found for ${typeName ? `type="${typeName}"` : `cluster ${clusterNumber}`}. Available types: Rocky Planet, Gas Giant, Ice Giant (clusters 0, 1, 2).`;
+  }
+
+  const limited = filtered.slice(0, Math.min(limit, 50));
+
+  const rows = limited.map(p => {
+    const id = p.toi || p.toipfx || 'unknown';
+    const r = p.pl_rade != null ? p.pl_rade.toFixed(2) : '—';
+    const pc1 = p.PC1 != null ? p.PC1.toFixed(2) : '—';
+    const pc2 = p.PC2 != null ? p.PC2.toFixed(2) : '—';
+    const cluster = p.type_cluster != null ? p.type_cluster : '—';
+    const conf = p.type_confidence != null ? p.type_confidence.toFixed(2) : '—';
+    return `${id}\tR=${r}\tPC1=${pc1}\tPC2=${pc2}\tCluster=${cluster}\tConf=${conf}`;
+  });
+
+  const filterDesc = typeName ? `type="${typeName}"` : `cluster ${clusterNumber}`;
+
+  return [
+    `Planets filtered by ${filterDesc}`,
+    '-------------------------------------------',
+    `Total matches: ${filtered.length} (showing up to ${Math.min(limit, 50)})`,
+    '',
+    'ID\tRadius\tPC1\tPC2\tCluster\tConfidence',
+    ...rows,
+    '',
+    'Direct filter on PCA classification data (no model tokens used).'
+  ].join('\n');
+}
+
+function toolPCACoordinates(
+  classifications: PlanetTypeClassification[],
+  planetIds?: string[],
+  limit: number = 25
+): string {
+  console.log('[Tool] toolPCACoordinates called with', {
+    planetIds,
+    limit,
+    classificationsCount: classifications.length
+  });
+
+  if (classifications.length === 0) {
+    return 'No PCA classification data available.';
+  }
+
+  let filtered = classifications;
+
+  // Filter by specific planet IDs if provided
+  if (planetIds && planetIds.length > 0) {
+    filtered = classifications.filter(c => {
+      const id = c.id || c.toi || '';
+      return planetIds.some(pid => id.toLowerCase().includes(pid.toLowerCase()));
+    });
+  }
+
+  if (filtered.length === 0) {
+    return `No planets found matching ${planetIds?.join(', ')}`;
+  }
+
+  const limited = filtered.slice(0, Math.min(limit, 50));
+
+  const rows = limited.map(c => {
+    const id = c.id || c.toi || 'unknown';
+    const pc1 = c.PC1 != null ? c.PC1.toFixed(3) : 'N/A';
+    const pc2 = c.PC2 != null ? c.PC2.toFixed(3) : 'N/A';
+    const cluster = c.type_cluster != null ? c.type_cluster : 'N/A';
+    const type = c.type_name || '—';
+    const conf = c.type_confidence != null ? (c.type_confidence * 100).toFixed(1) + '%' : '—';
+    return `${id}\t(${pc1}, ${pc2})\tCluster ${cluster}: ${type}\t${conf}`;
+  });
+
+  return [
+    'PCA Principal Component Coordinates',
+    '-----------------------------------',
+    `Showing ${limited.length} of ${filtered.length} planets`,
+    '',
+    'ID\tPCA Coordinates (PC1, PC2)\tClassification\tConfidence',
+    ...rows,
+    '',
+    'Note: PC1 and PC2 are the two principal components from PCA dimensionality reduction.',
+    'These coordinates are used with K-Means clustering and KNN for classification.'
+  ].join('\n');
+}
+
+function toolClusterComparison(
+  planetData: PlanetRecord[],
+  classifications: PlanetTypeClassification[]
+): string {
+  console.log('[Tool] toolClusterComparison called with', {
+    planetDataCount: planetData.length,
+    classificationsCount: classifications.length
+  });
+
+  if (classifications.length === 0) {
+    return 'No PCA classification data available for cluster comparison.';
+  }
+
+  // Build classification map
+  const classMap = new Map<string, PlanetTypeClassification>();
+  classifications.forEach(c => {
+    const key = c.id || c.toi || '';
+    if (key) classMap.set(key, c);
+  });
+
+  // Merge planetData with classifications
+  const merged = planetData
+    .map(p => {
+      const key = p.toi || p.toipfx || '';
+      const classification = classMap.get(key);
+      return classification ? { ...p, ...classification } : null;
+    })
+    .filter((p): p is (PlanetRecord & PlanetTypeClassification) => p !== null);
+
+  // Group by cluster
+  const clusterGroups = new Map<number, (PlanetRecord & PlanetTypeClassification)[]>();
+  merged.forEach(p => {
+    const cluster = p.type_cluster ?? -1;
+    if (!clusterGroups.has(cluster)) clusterGroups.set(cluster, []);
+    clusterGroups.get(cluster)!.push(p);
+  });
+
+  const clusterStats = [...clusterGroups.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([cluster, planets]) => {
+      const name = planets[0].type_name || `Cluster ${cluster}`;
+
+      // Calculate statistics
+      const radii = planets.map(p => p.pl_rade).filter((r): r is number => typeof r === 'number');
+      const periods = planets.map(p => p.pl_orbper).filter((p): p is number => typeof p === 'number');
+      const temps = planets.map(p => p.pl_eqt).filter((t): t is number => typeof t === 'number');
+
+      const avgRadius = radii.length > 0 ? radii.reduce((a, b) => a + b, 0) / radii.length : null;
+      const avgPeriod = periods.length > 0 ? periods.reduce((a, b) => a + b, 0) / periods.length : null;
+      const avgTemp = temps.length > 0 ? temps.reduce((a, b) => a + b, 0) / temps.length : null;
+
+      return {
+        cluster,
+        name,
+        count: planets.length,
+        avgRadius: avgRadius ? avgRadius.toFixed(2) : 'N/A',
+        avgPeriod: avgPeriod ? avgPeriod.toFixed(2) : 'N/A',
+        avgTemp: avgTemp ? avgTemp.toFixed(0) : 'N/A'
+      };
+    });
+
+  const rows = clusterStats.map(s =>
+    `${s.name} (Cluster ${s.cluster}):\n` +
+    `  Count: ${s.count} planets\n` +
+    `  Avg Radius: ${s.avgRadius} R⊕\n` +
+    `  Avg Period: ${s.avgPeriod} days\n` +
+    `  Avg Temp: ${s.avgTemp} K`
+  );
+
+  return [
+    'Cluster Comparison Analysis',
+    '==========================',
+    '',
+    ...rows,
+    '',
+    'This comparison shows physical characteristics of planets in each PCA-derived cluster.',
+    'Clusters are determined by PCA + K-Means based on 6 features: radius, insolation, temperature, period, stellar temperature, and stellar radius.'
+  ].join('\n');
+}
 
 function toolDatasetStats(
   planetData: PlanetRecord[],
@@ -591,13 +868,15 @@ export async function POST(req: NextRequest) {
       planetData = [],
       predictionResults,
       planetTypeClassifications = [],
-      modelInfo = []
+      modelInfo = [],
+      pcaMetadata
     } = body as {
       messages?: BasicMessage[];
       planetData?: PlanetRecord[];
       predictionResults?: PredictionResults;
       planetTypeClassifications?: PlanetTypeClassification[];
       modelInfo?: unknown[];
+      pcaMetadata?: { pca_var_explained?: [number, number]; kmeans_k?: number };
     };
 
     if (!Array.isArray(messages)) {
@@ -623,10 +902,21 @@ You receive:
 - User messages.
 
 You have access to tools that can query the full dataset:
+
+Binary Prediction Tools:
 - prediction_summary: Get binary prediction counts (how many exoplanets vs non-exoplanets detected)
+- top_confidence_predictions: Get the highest confidence predictions
+
+PCA Classification Tools (only for detected exoplanet candidates):
+- pca_classification_summary: Get detailed PCA/KNN classification statistics with cluster breakdown
+- filter_by_cluster: Filter planets by cluster number or type name (Rocky Planet, Gas Giant, Ice Giant)
+- pca_coordinates: Get PC1/PC2 coordinates for planets (principal component analysis coordinates)
+- cluster_comparison: Compare physical characteristics (radius, period, temp) between clusters
+Note: PCA classifications are only performed on objects predicted as exoplanet candidates (label=1)
+
+General Dataset Tools:
 - dataset_stats: Get comprehensive statistics about the dataset
 - filter_radius: Filter planets by radius with comparison operators
-- top_confidence_predictions: Get the highest confidence predictions
 - count_by_type: Count exoplanets by their classification type
 - filter_by_range: Filter planets by a range of values for any numeric field
 - query_planets: Advanced query with multiple filters (type, confidence, radius, period)
@@ -680,6 +970,41 @@ ${contextSummary}
           inputSchema: z.object({}),
           execute: async () => {
             return toolPredictionSummary(predictionResults);
+          }
+        }),
+        pca_classification_summary: tool({
+          description: 'Get detailed PCA/KNN classification summary including cluster breakdown, variance explained, and average confidence per cluster. Use when users ask about classification types, PCA results, or cluster distribution.',
+          inputSchema: z.object({}),
+          execute: async () => {
+            return toolPCAClassificationSummary(safePlanetTypeClassifications, pcaMetadata);
+          }
+        }),
+        filter_by_cluster: tool({
+          description: 'Filter planets by PCA cluster number (0, 1, 2) or type name (Rocky Planet, Gas Giant, Ice Giant). Returns planets with their PC1/PC2 coordinates.',
+          inputSchema: z.object({
+            cluster_number: z.number().optional().describe('Cluster number (0, 1, or 2)'),
+            type_name: z.string().optional().describe('Type name to search for (e.g., "Rocky Planet", "Gas Giant", "Ice Giant")'),
+            limit: z.number().optional().default(25).describe('Maximum number of results (max 50)')
+          }),
+          execute: async ({ cluster_number, type_name, limit }) => {
+            return toolFilterByCluster(safePlanetData, safePlanetTypeClassifications, cluster_number, type_name, limit || 25);
+          }
+        }),
+        pca_coordinates: tool({
+          description: 'Get PC1 and PC2 coordinates for planets. PCA (Principal Component Analysis) projects 6-dimensional feature space into 2D. Use when users ask about PCA values, coordinates, or want to see specific planet positions in PCA space.',
+          inputSchema: z.object({
+            planet_ids: z.array(z.string()).optional().describe('Optional array of planet IDs to filter (e.g., ["TOI-123", "TOI-456"])'),
+            limit: z.number().optional().default(25).describe('Maximum number of results (max 50)')
+          }),
+          execute: async ({ planet_ids, limit }) => {
+            return toolPCACoordinates(safePlanetTypeClassifications, planet_ids, limit || 25);
+          }
+        }),
+        cluster_comparison: tool({
+          description: 'Compare physical characteristics (average radius, period, temperature) between different PCA-derived clusters. Use when users want to understand differences between planet types or clusters.',
+          inputSchema: z.object({}),
+          execute: async () => {
+            return toolClusterComparison(safePlanetData, safePlanetTypeClassifications);
           }
         }),
         dataset_stats: tool({

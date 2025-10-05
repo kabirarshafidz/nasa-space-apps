@@ -1161,10 +1161,12 @@ async def root():
 async def classify_planet_types(
     toi_list: str = Form(...),
     features_json: str = Form(...),
+    predicted_labels: str = Form(None),  # Optional: filter only predicted exoplanets
 ):
     """
     Classify planet types using PCA+KMeans+KNN with saved artifacts.
     Returns PC1, PC2 coordinates and cluster assignments with base64 plot.
+    Only classifies objects predicted as exoplanet candidates (label=1).
     """
     try:
         print(f"\n{'='*60}")
@@ -1175,6 +1177,32 @@ async def classify_planet_types(
         toi_list_parsed = json.loads(toi_list)
         features_list = json.loads(features_json)
         print(f"[PCA] Received {len(features_list)} objects to classify")
+        
+        # Filter only exoplanet candidates (predicted_label=1)
+        if predicted_labels:
+            labels = json.loads(predicted_labels)
+            print(f"[PCA] Filtering {len(labels)} predictions...")
+            
+            # Keep only indices where predicted_label == 1 (exoplanet)
+            candidate_indices = [i for i, label in enumerate(labels) if label == 1]
+            
+            if len(candidate_indices) == 0:
+                print(f"[PCA] ⚠️  No exoplanet candidates found to classify!")
+                return {
+                    "chart_base64": None,
+                    "classifications": [],
+                    "meta": {
+                        "pca_var_explained": [0, 0],
+                        "kmeans_k": 0,
+                    },
+                }
+            
+            # Filter TOI list and features to only include candidates
+            toi_list_parsed = [toi_list_parsed[i] for i in candidate_indices]
+            features_list = [features_list[i] for i in candidate_indices]
+            
+            print(f"[PCA] ✓ Filtered to {len(candidate_indices)} exoplanet candidates")
+        
         print(f"[PCA] TOI list: {toi_list_parsed}")
 
         # Check if artifacts exist

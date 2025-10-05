@@ -31,6 +31,7 @@ interface PlanetChatbotProps {
   predictionResults?: PredictionResults;
   planetTypeClassifications?: PlanetTypeClassification[];
   modelInfo?: PreTrainedModel[];
+  pcaMetadata?: { pca_var_explained?: [number, number]; kmeans_k?: number };
 }
 
 type ChatMessage = {
@@ -66,7 +67,8 @@ export function PlanetChatbot({
   planetData = [],
   predictionResults,
   planetTypeClassifications = [],
-  modelInfo = []
+  modelInfo = [],
+  pcaMetadata
 }: PlanetChatbotProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isExpanded, setIsExpanded] = useState(false);
@@ -102,8 +104,8 @@ export function PlanetChatbot({
     },
     {
       icon: Sparkles,
-      text: "Find habitability candidates",
-      prompt: "Which planets in our dataset might be potentially habitable based on their characteristics?"
+      text: "PCA Cluster Analysis",
+      prompt: "Show me the PCA classification summary and compare characteristics between different clusters"
     }
   ];
 
@@ -165,7 +167,8 @@ export function PlanetChatbot({
           planetData,
           predictionResults,
           planetTypeClassifications,
-          modelInfo
+          modelInfo,
+          pcaMetadata
         })
       });
 

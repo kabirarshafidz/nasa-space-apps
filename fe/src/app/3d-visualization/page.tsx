@@ -195,7 +195,7 @@ export default function ThreeDVisualization() {
                     value={[speedMultiplier]}
                     onValueChange={(value) => setSpeedMultiplier(value[0])}
                     min={0.1}
-                    max={20}
+                    max={5}
                     step={0.1}
                   />
                   <p className="text-xs text-muted-foreground text-center">

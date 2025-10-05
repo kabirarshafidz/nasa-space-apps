@@ -136,10 +136,11 @@ export default function PredictPage() {
         }
         setPlanetData(planetDataArray);
 
-        // Kick off PCA→KNN type classifications
+        // Kick off PCA→KNN type classifications (only for predicted exoplanets)
         await fetchPlanetTypeClassifications(
           result.results?.metadata || [],
-          result.csvText || [singleFeatures]
+          result.csvText || [singleFeatures],
+          result.results?.predicted_labels || []  // Pass predicted labels to filter candidates
         );
 
         setCurrentStep(3);

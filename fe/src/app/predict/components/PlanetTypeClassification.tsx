@@ -152,6 +152,11 @@ export function PlanetTypeClassification({
                 predictionResults={predictionResults}
                 planetTypeClassifications={planetTypeClassifications}
                 modelInfo={modelInfo}
+                pcaMetadata={
+                  pcaExplained && kmeansK
+                    ? { pca_var_explained: pcaExplained, kmeans_k: kmeansK }
+                    : undefined
+                }
               />
             </div>
           </div>

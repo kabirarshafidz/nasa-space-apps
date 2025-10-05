@@ -87,7 +87,11 @@ export function usePlanetTypeClassification() {
   const [kmeansK, setKmeansK] = useState<number | undefined>(undefined);
 
   const fetchPlanetTypeClassifications = useCallback(
-    async (metadataArray: Metadata[] = [], featuresData: string | Array<Record<string, any>>) => {
+    async (
+      metadataArray: Metadata[] = [],
+      featuresData: string | Array<Record<string, any>>,
+      predictedLabels?: number[]  // Add predicted labels parameter
+    ) => {
       setLoading(true);
       setError(null);
       try {
@@ -114,6 +118,11 @@ export function usePlanetTypeClassification() {
         }
 
         formData.append("features_json", JSON.stringify(featuresList));
+
+        // Add predicted labels to filter only exoplanet candidates
+        if (predictedLabels && Array.isArray(predictedLabels)) {
+          formData.append("predicted_labels", JSON.stringify(predictedLabels));
+        }
 
         // ---- Call API ----
         const endpoint = `${process.env.NEXT_PUBLIC_API_ENDPOINT}/classify/planet-types`;
