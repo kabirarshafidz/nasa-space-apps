@@ -1,0 +1,41 @@
+---
+title: "tess_sample_data"
+format: html
+editor: visual
+embed-resources: true
+---
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+```
+
+# Import original TESS data
+
+```{r}
+tess = read_csv("datasets/tess.csv", skip = 69)
+```
+
+# Random sample of TESS data
+
+```{r}
+set.seed(42)
+tess_sample = tess[sample(nrow(tess), 250), ]
+```
+
+# Give noise to sample
+
+```{r}
+set.seed(42)
+tess_sample = tess_sample %>% 
+  mutate(pl_eqt = pl_eqt + rnorm(n(), mean = 0, sd = 40),
+         st_rad = st_rad * (1 + rnorm(n(), mean = 0, sd = 0.01)),
+         pl_trandep = pl_trandep * (1 + rnorm(n(), mean = 0, sd = 0.01)),
+         pl_rade = pl_rade + rnorm(n(), mean = 0, sd = 0.01),
+         pl_orbper = pl_orbper * (1 + rnorm(n(), mean = 0, sd = 10)))
+```
+
+# Export to csv
+
+```{r}
+write_csv(tess_sample, "datasets/tess_sample.csv")
+```
