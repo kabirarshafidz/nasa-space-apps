@@ -214,11 +214,21 @@ export default function ThreeDVisualization() {
       <Card className="w-full">
         <CardContent className="p-0">
           {selectedSystem && (
-            <ExoplanetVisualization
-              system={selectedSystem}
-              speedMultiplier={speedMultiplier}
-              height="700px"
-            />
+            <>
+              <ExoplanetVisualization
+                system={selectedSystem}
+                speedMultiplier={speedMultiplier}
+                height="700px"
+              />
+
+              {/* Interaction Hint */}
+              <div className="m-4 p-2 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/50 dark:to-purple-950/50 border border-blue-200 dark:border-blue-800 rounded-md">
+                <p className="text-xs text-blue-700 dark:text-blue-300 text-center">
+                  💡 <strong>Tip:</strong> Hover over any planet to see its
+                  details (info stays visible for 3 seconds after you move away)
+                </p>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

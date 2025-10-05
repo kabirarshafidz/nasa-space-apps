@@ -3,27 +3,6 @@ import { openai } from '@ai-sdk/openai';
 import { streamText, tool, CoreMessage } from 'ai';
 import { z } from 'zod';
 
-/**
- * Enhanced /api/chat route with AI SDK tool calling integration.
- *
- * Goals:
- * 1. Avoid wasting model tokens by letting the AI decide when to query the full dataset
- *    using proper tool calls.
- * 2. Use the AI SDK's built-in tool calling mechanism for reliable, type-safe tool execution.
- * 3. Preserve streaming for normal LLM responses.
- *
- * How it works:
- * - We receive { messages, planetData, predictionResults, planetTypeClassifications, modelInfo }.
- * - We define three tools for the AI model:
- *     a) dataset_stats              → comprehensive statistics about the dataset
- *     b) filter_radius              → filter planets by radius with comparison operators
- *     c) top_confidence_predictions → get highest confidence predictions
- * - The model receives a compact data snapshot and decides when to use tools for detailed queries.
- * - Tools execute server-side with access to the full dataset, returning results to the model.
- * - The model then formulates a response based on tool results and streams it to the client.
- */
-
-/* ---------------------------------- Types ---------------------------------- */
 
 type BasicMessage = { role: 'user' | 'assistant' | 'system'; content: string };
 
@@ -177,7 +156,7 @@ function toolFilterByCluster(
   });
 
   if (filtered.length === 0) {
-    return `No planets found for ${typeName ? `type="${typeName}"` : `cluster ${clusterNumber}`}. Available types: Rocky Planet, Gas Giant (clusters 0, 1).`;
+    return `No planets found for ${typeName ? `type="${typeName}"` : `cluster ${clusterNumber}`}. Available types: Rocky Planet, Gaseus planet (clusters 0, 1).`;
   }
 
   const limited = filtered.slice(0, Math.min(limit, 50));
@@ -202,7 +181,6 @@ function toolFilterByCluster(
     'ID\tRadius\tPC1\tPC2\tCluster\tConfidence',
     ...rows,
     '',
-    'Direct filter on PCA classification data (no model tokens used).'
   ].join('\n');
 }
 
@@ -397,7 +375,6 @@ function toolDatasetStats(
     `Classification distribution: ${formatDist(typeCounts)}`,
     binaryPredictionSummary || null,
     '',
-    'Note: These figures are computed directly from the provided in‑memory datasets (no model tokens used).'
   ]
     .filter(Boolean)
     .join('\n');
@@ -486,7 +463,6 @@ function toolTopConfidencePredictions(
     'TOI\tPrediction Probability\tClassified Type (confidence)',
     ...lines,
     '',
-    'Served from local prediction data (no model tokens used).'
   ].join('\n');
 }
 
@@ -530,7 +506,6 @@ function toolCountByType(
     'Breakdown by type:',
     ...lines,
     '',
-    'Direct count from dataset (no model tokens used).'
   ].join('\n');
 }
 
@@ -715,7 +690,6 @@ function toolPredictionSummary(
     '  - Label 1 = Exoplanet detected',
     '  - Label 0 = Not an exoplanet / False positive',
     '',
-    'Direct count from prediction results (no model tokens used).'
   ].join('\n');
 }
 
@@ -909,7 +883,7 @@ Binary Prediction Tools:
 
 PCA Classification Tools (only for detected exoplanet candidates):
 - pca_classification_summary: Get detailed PCA/KNN classification statistics with cluster breakdown
-- filter_by_cluster: Filter planets by cluster number or type name (Rocky Planet, Gas Giant, Ice Giant)
+- filter_by_cluster: Filter planets by cluster number or type name (Rocky Planet, Gas planet)
 - pca_coordinates: Get PC1/PC2 coordinates for planets (principal component analysis coordinates)
 - cluster_comparison: Compare physical characteristics (radius, period, temp) between clusters
 Note: PCA classifications are only performed on objects predicted as exoplanet candidates (label=1)
@@ -922,8 +896,8 @@ General Dataset Tools:
 - query_planets: Advanced query with multiple filters (type, confidence, radius, period)
 - search_by_field: Search for planets by any field name (e.g., sy_snum for number of stars, sy_pnum for number of planets in system)
 
-If the user asks about cluster 0 and cluster 1, cluster 0 means that the planet is a rocky planet and cluster 1 means that the planet is a gas giant.
-Cluster 0 represents large, highly irradiated, short-period planets with high equilibrium temperatures orbiting Sun-like stars—characteristics typical of gas giants or hot Jupiters. In contrast, Cluster 1 consists of smaller, cooler planets receiving lower stellar flux, orbiting cooler, smaller stars with longer periods—traits consistent with rocky or terrestrial planets.
+If the user asks about cluster 0 and cluster 1, cluster 0 means that the planet is a rocky planet and cluster 1 means that the planet is a gaseus planet.
+Cluster 0 represents large, highly irradiated, short-period planets with high equilibrium temperatures orbiting Sun-like stars—characteristics typical of gas planets or hot Jupiters. In contrast, Cluster 1 consists of smaller, cooler planets receiving lower stellar flux, orbiting cooler, smaller stars with longer periods—traits consistent with rocky or terrestrial planets.
 
 Rules:
 1. Use the available tools when users ask for specific data queries, statistics, or filtering.
@@ -934,7 +908,9 @@ Rules:
    - Super-Earth (1–2)
    - Sub-Neptune (2–4)
    - Neptune-like (4–10)
-   - Ultra-Giant (>10)
+   - Ultra-planet (>10)
+
+
 
 Compact snapshot:
 ${contextSummary}
@@ -956,7 +932,7 @@ ${contextSummary}
     });
 
     const result = streamText({
-      model: openai('gpt-5-mini'),
+      model: openai('gpt-4.1-mini'),
       messages: modelMessages,
       onStepFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
         console.log('[Chat API] Step finished:', {
@@ -983,10 +959,10 @@ ${contextSummary}
           }
         }),
         filter_by_cluster: tool({
-          description: 'Filter planets by PCA cluster number (0, 1, 2) or type name (Rocky Planet, Gas Giant). Returns planets with their PC1/PC2 coordinates.',
+          description: 'Filter planets by PCA cluster number (0, 1, 2) or type name (Rocky Planet, Gas planet). Returns planets with their PC1/PC2 coordinates.',
           inputSchema: z.object({
             cluster_number: z.number().optional().describe('Cluster number (0, 1)'),
-            type_name: z.string().optional().describe('Type name to search for (e.g., "Rocky Planet", "Gas Giant",)'),
+            type_name: z.string().optional().describe('Type name to search for (e.g., "Rocky Planet", "Gas planet",)'),
             limit: z.number().optional().default(25).describe('Maximum number of results (max 50)')
           }),
           execute: async ({ cluster_number, type_name, limit }) => {
@@ -1045,7 +1021,7 @@ ${contextSummary}
           }
         }),
         count_by_type: tool({
-          description: 'Count exoplanets grouped by their classification type (Super-Earth, Sub-Neptune, Neptune-like, Ultra-Giant, etc.) and show the distribution',
+          description: 'Count exoplanets grouped by their classification type (Super-Earth, Sub-Neptune, Neptune-like, Ultra-planet, etc.) and show the distribution',
           inputSchema: z.object({}),
           execute: async () => {
             return toolCountByType(
@@ -1068,7 +1044,7 @@ ${contextSummary}
         query_planets: tool({
           description: 'Advanced query to filter planets with multiple criteria including type, confidence, radius range, and period range',
           inputSchema: z.object({
-            type_name: z.string().optional().describe('Filter by planet type (e.g., "Super-Earth", "Sub-Neptune", "Neptune-like", "Ultra-Giant")'),
+            type_name: z.string().optional().describe('Filter by planet type (e.g., "Super-Earth", "Sub-Neptune", "Neptune-like", "Ultra-planet")'),
             min_confidence: z.number().optional().describe('Minimum classification confidence (0-1)'),
             min_radius: z.number().optional().describe('Minimum radius in Earth radii'),
             max_radius: z.number().optional().describe('Maximum radius in Earth radii'),

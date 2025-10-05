@@ -34,12 +34,21 @@ import { ResultsTable } from "./components/ResultsTable";
 import { PlanetTypeClassification } from "./components/PlanetTypeClassification";
 import { ExoplanetVisualization } from "@/app/3d-visualization/components";
 import { Slider } from "@/components/ui/slider";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // 3D Visualization utilities
 import {
   createSolarSystemFromPrediction,
   parseCSVData,
   SolarSystem,
+  AU,
+  calculateOrbitRadius,
 } from "@/app/3d-visualization/lib";
 
 export default function PredictPage() {
@@ -81,8 +90,13 @@ export default function PredictPage() {
 
   // 3D Visualization state
   const [solarSystem, setSolarSystem] = useState<SolarSystem | null>(null);
+  const [allDetectedSystems, setAllDetectedSystems] = useState<SolarSystem[]>(
+    []
+  );
+  const [selectedSystemIndex, setSelectedSystemIndex] = useState(0);
   const [speedMultiplier, setSpeedMultiplier] = useState(1);
   const [isExoplanetDetected, setIsExoplanetDetected] = useState(false);
+  const [selectedPlanetIndex, setSelectedPlanetIndex] = useState(0);
 
   // Custom hooks
   const { isLoading, predictionResults, handlePredict } = usePrediction();
@@ -150,69 +164,194 @@ export default function PredictPage() {
         }
         setPlanetData(planetDataArray);
 
-        // Check if exoplanet is detected (for single prediction)
-        if (predictionType === "single" && result.results) {
-          const isDetected = result.results.predicted_labels?.[0] === 1;
-          setIsExoplanetDetected(isDetected);
+        // Create 3D visualization for detected exoplanets
+        if (result.results) {
+          const detectedLabels = result.results.predicted_labels || [];
+          const hasDetectedExoplanet = detectedLabels.some(
+            (label: number) => label === 1
+          );
+          setIsExoplanetDetected(hasDetectedExoplanet);
 
-          // Create 3D visualization if exoplanet detected
-          if (isDetected) {
+          if (hasDetectedExoplanet) {
             try {
-              // First, try to find existing system in TESS data
+              // Load TESS data for merging
               const tessData = await parseCSVData();
-              const existingSystem = tessData.find(
-                (sys) => sys.hostStar === metadata.toipfx
-              );
 
-              if (existingSystem) {
-                // Use existing system but add our predicted planet
-                const newPlanet = {
-                  toi: metadata.toi,
-                  toipfx: metadata.toipfx,
-                  pl_orbper: parseFloat(singleFeatures.pl_orbper),
-                  pl_rade: parseFloat(singleFeatures.pl_rade),
-                  pl_eqt: parseFloat(singleFeatures.pl_eqt),
-                  st_logg: parseFloat(singleFeatures.st_logg),
-                  st_rad: parseFloat(singleFeatures.st_rad),
-                  st_teff: parseFloat(singleFeatures.st_teff),
-                  ra: 0,
-                  dec: 0,
-                };
-
-                // Add new planet to existing system
-                const updatedSystem = {
-                  ...existingSystem,
-                  planets: [...existingSystem.planets, newPlanet],
-                };
-                setSolarSystem(updatedSystem);
-              } else {
-                // Create new solar system from prediction
-                const system = createSolarSystemFromPrediction({
-                  toi: metadata.toi,
-                  toipfx: metadata.toipfx,
-                  pl_orbper: parseFloat(singleFeatures.pl_orbper),
-                  pl_rade: parseFloat(singleFeatures.pl_rade),
-                  pl_eqt: parseFloat(singleFeatures.pl_eqt),
-                  st_logg: parseFloat(singleFeatures.st_logg),
-                  st_rad: parseFloat(singleFeatures.st_rad),
-                  st_teff: parseFloat(singleFeatures.st_teff),
-                  ra: 0,
-                  dec: 0,
-                });
-
-                if (system) {
-                  setSolarSystem(system);
-                } else {
-                  console.warn(
-                    "Could not create solar system from prediction data"
+              if (predictionType === "single") {
+                // Single prediction - create one system
+                const isDetected = detectedLabels[0] === 1;
+                if (isDetected) {
+                  const existingSystem = tessData.find(
+                    (sys) => sys.hostStar === metadata.toipfx
                   );
+
+                  if (existingSystem) {
+                    // Add new planet to existing system
+                    const newPlanet = {
+                      toi: metadata.toi,
+                      toipfx: metadata.toipfx,
+                      pl_orbper: parseFloat(singleFeatures.pl_orbper),
+                      pl_rade: parseFloat(singleFeatures.pl_rade),
+                      pl_eqt: parseFloat(singleFeatures.pl_eqt),
+                      st_logg: parseFloat(singleFeatures.st_logg),
+                      st_rad: parseFloat(singleFeatures.st_rad),
+                      st_teff: parseFloat(singleFeatures.st_teff),
+                      ra: 0,
+                      dec: 0,
+                    };
+
+                    setSolarSystem({
+                      ...existingSystem,
+                      planets: [...existingSystem.planets, newPlanet],
+                    });
+                    // Select the newly added planet (last in array)
+                    setSelectedPlanetIndex(existingSystem.planets.length);
+                  } else {
+                    // Create new system
+                    const system = createSolarSystemFromPrediction({
+                      toi: metadata.toi,
+                      toipfx: metadata.toipfx,
+                      pl_orbper: parseFloat(singleFeatures.pl_orbper),
+                      pl_rade: parseFloat(singleFeatures.pl_rade),
+                      pl_eqt: parseFloat(singleFeatures.pl_eqt),
+                      st_logg: parseFloat(singleFeatures.st_logg),
+                      st_rad: parseFloat(singleFeatures.st_rad),
+                      st_teff: parseFloat(singleFeatures.st_teff),
+                      ra: 0,
+                      dec: 0,
+                    });
+
+                    if (system) {
+                      setSolarSystem(system);
+                      setSelectedPlanetIndex(0);
+                    }
+                  }
+                }
+              } else if (predictionType === "batch") {
+                // Batch prediction - find ALL detected exoplanets and visualize
+                const detectedPlanets = planetDataArray.filter(
+                  (_, idx) => detectedLabels[idx] === 1
+                );
+
+                if (detectedPlanets.length > 0) {
+                  // Group detected planets by host star
+                  const planetsByHost = new Map<string, any[]>();
+                  detectedPlanets.forEach((planet) => {
+                    const host = planet.toipfx || "Unknown";
+                    if (!planetsByHost.has(host)) {
+                      planetsByHost.set(host, []);
+                    }
+                    planetsByHost.get(host)!.push(planet);
+                  });
+
+                  // Create systems for ALL hosts with detected planets
+                  const createdSystems: SolarSystem[] = [];
+
+                  for (const [
+                    hostStar,
+                    planetsToAdd,
+                  ] of planetsByHost.entries()) {
+                    // Check if this system exists in TESS data
+                    const existingSystem = tessData.find(
+                      (sys) => sys.hostStar === hostStar
+                    );
+
+                    if (existingSystem) {
+                      // Add all detected planets to existing system
+                      const newPlanets = planetsToAdd.map((planet) => ({
+                        toi: planet.toi || "Batch",
+                        toipfx: planet.toipfx,
+                        pl_orbper: parseFloat(planet.pl_orbper),
+                        pl_rade: parseFloat(planet.pl_rade),
+                        pl_eqt: parseFloat(planet.pl_eqt),
+                        st_logg: parseFloat(planet.st_logg),
+                        st_rad: parseFloat(planet.st_rad),
+                        st_teff: parseFloat(planet.st_teff),
+                        ra: 0,
+                        dec: 0,
+                      }));
+
+                      createdSystems.push({
+                        ...existingSystem,
+                        planets: [...existingSystem.planets, ...newPlanets],
+                      });
+                    } else {
+                      // Create new system with all detected planets
+                      if (planetsToAdd.length === 1) {
+                        // Single planet - use helper function
+                        const planet = planetsToAdd[0];
+                        const system = createSolarSystemFromPrediction({
+                          toi: planet.toi || "Batch",
+                          toipfx: planet.toipfx,
+                          pl_orbper: parseFloat(planet.pl_orbper),
+                          pl_rade: parseFloat(planet.pl_rade),
+                          pl_eqt: parseFloat(planet.pl_eqt),
+                          st_logg: parseFloat(planet.st_logg),
+                          st_rad: parseFloat(planet.st_rad),
+                          st_teff: parseFloat(planet.st_teff),
+                          ra: 0,
+                          dec: 0,
+                        });
+
+                        if (system) {
+                          createdSystems.push(system);
+                        }
+                      } else {
+                        // Multiple planets - create system with all of them
+                        const firstPlanet = planetsToAdd[0];
+                        const system = createSolarSystemFromPrediction({
+                          toi: firstPlanet.toi || "Batch",
+                          toipfx: firstPlanet.toipfx,
+                          pl_orbper: parseFloat(firstPlanet.pl_orbper),
+                          pl_rade: parseFloat(firstPlanet.pl_rade),
+                          pl_eqt: parseFloat(firstPlanet.pl_eqt),
+                          st_logg: parseFloat(firstPlanet.st_logg),
+                          st_rad: parseFloat(firstPlanet.st_rad),
+                          st_teff: parseFloat(firstPlanet.st_teff),
+                          ra: 0,
+                          dec: 0,
+                        });
+
+                        if (system) {
+                          // Add the rest of the detected planets
+                          const additionalPlanets = planetsToAdd
+                            .slice(1)
+                            .map((planet) => ({
+                              toi: planet.toi || "Batch",
+                              toipfx: planet.toipfx,
+                              pl_orbper: parseFloat(planet.pl_orbper),
+                              pl_rade: parseFloat(planet.pl_rade),
+                              pl_eqt: parseFloat(planet.pl_eqt),
+                              st_logg: parseFloat(planet.st_logg),
+                              st_rad: parseFloat(planet.st_rad),
+                              st_teff: parseFloat(planet.st_teff),
+                              ra: 0,
+                              dec: 0,
+                            }));
+
+                          createdSystems.push({
+                            ...system,
+                            planets: [...system.planets, ...additionalPlanets],
+                          });
+                        }
+                      }
+                    }
+                  }
+
+                  // Set all detected systems and select the first one
+                  if (createdSystems.length > 0) {
+                    setAllDetectedSystems(createdSystems);
+                    setSolarSystem(createdSystems[0]);
+                    setSelectedSystemIndex(0);
+                    setSelectedPlanetIndex(0);
+                  }
                 }
               }
             } catch (error) {
               console.error("Error creating solar system:", error);
             }
           } else {
-            // Not an exoplanet, clear any existing visualization
+            // No exoplanets detected
             setSolarSystem(null);
           }
         }
@@ -341,6 +480,14 @@ export default function PredictPage() {
                     height="500px"
                   />
 
+                  {/* Interaction Hint */}
+                  <div className="mt-2 p-2 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/50 dark:to-purple-950/50 border border-blue-200 dark:border-blue-800 rounded-md">
+                    <p className="text-xs text-blue-700 dark:text-blue-300 text-center">
+                      Hover over any planet to see its details (info stays
+                      visible for 3 seconds after you move away)
+                    </p>
+                  </div>
+
                   {/* Speed Control */}
                   <div className="mt-4 space-y-2">
                     <div className="flex items-center justify-between">
@@ -363,11 +510,91 @@ export default function PredictPage() {
                     </p>
                   </div>
 
-                  {/* System Info */}
+                  {/* System Selector - Show if multiple systems detected */}
+                  {predictionType === "batch" &&
+                    allDetectedSystems.length > 1 && (
+                      <div className="mt-4">
+                        <label className="text-sm font-medium mb-2 block">
+                          Select Solar System{" "}
+                          <span className="text-muted-foreground font-normal">
+                            ({allDetectedSystems.length} system
+                            {allDetectedSystems.length !== 1 ? "s" : ""} with
+                            detected exoplanets)
+                          </span>
+                        </label>
+                        <Select
+                          value={selectedSystemIndex.toString()}
+                          onValueChange={(value) => {
+                            const idx = parseInt(value);
+                            setSelectedSystemIndex(idx);
+                            setSolarSystem(allDetectedSystems[idx]);
+                            setSelectedPlanetIndex(0);
+                          }}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {allDetectedSystems.map((system, idx) => (
+                              <SelectItem key={idx} value={idx.toString()}>
+                                TOI {system.hostStar} ({system.planets.length}{" "}
+                                planet
+                                {system.planets.length !== 1 ? "s" : ""})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+
+                  {/* Planet Selector - Always visible */}
+                  <div className="mt-4">
+                    <label className="text-sm font-medium mb-2 block">
+                      Select Planet to View Info{" "}
+                      <span className="text-muted-foreground font-normal">
+                        ({solarSystem.planets.length} planet
+                        {solarSystem.planets.length !== 1 ? "s" : ""} in system)
+                      </span>
+                    </label>
+                    <Select
+                      value={selectedPlanetIndex.toString()}
+                      onValueChange={(value) => {
+                        setSelectedPlanetIndex(parseInt(value));
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {solarSystem.planets.map((planet, idx) => {
+                          const orbitRadius = calculateOrbitRadius(
+                            planet.pl_orbper,
+                            solarSystem.starMass
+                          );
+                          const isInHZ =
+                            orbitRadius >=
+                              solarSystem.habitableZone.innerMeters &&
+                            orbitRadius <=
+                              solarSystem.habitableZone.outerMeters;
+
+                          return (
+                            <SelectItem key={idx} value={idx.toString()}>
+                              TOI-{planet.toi} ({planet.pl_rade.toFixed(2)} R⊕
+                              {isInHZ ? " - 🌍 In HZ" : ""})
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* System Info - Shows selected planet's data */}
                   <div className="grid grid-cols-3 gap-4 mt-4">
                     <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                       <div className="text-lg font-semibold text-blue-600 dark:text-blue-400">
-                        {parseFloat(singleFeatures.pl_orbper).toFixed(1)}
+                        {solarSystem.planets[
+                          selectedPlanetIndex
+                        ]?.pl_orbper.toFixed(1)}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         Period (days)
@@ -375,7 +602,9 @@ export default function PredictPage() {
                     </div>
                     <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                       <div className="text-lg font-semibold text-green-600 dark:text-green-400">
-                        {parseFloat(singleFeatures.pl_rade).toFixed(2)}
+                        {solarSystem.planets[
+                          selectedPlanetIndex
+                        ]?.pl_rade.toFixed(2)}
                       </div>
                       <div className="text-xs text-muted-foreground">
                         Radius (R⊕)
@@ -383,10 +612,82 @@ export default function PredictPage() {
                     </div>
                     <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                       <div className="text-lg font-semibold text-purple-600 dark:text-purple-400">
-                        {solarSystem.starTemp.toFixed(0)} K
+                        {(() => {
+                          const planet =
+                            solarSystem.planets[selectedPlanetIndex];
+                          const orbitRadius = calculateOrbitRadius(
+                            planet.pl_orbper,
+                            solarSystem.starMass
+                          );
+                          return (orbitRadius / AU).toFixed(3);
+                        })()}{" "}
+                        AU
                       </div>
                       <div className="text-xs text-muted-foreground">
-                        Star Temp
+                        Orbit Radius
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Additional planet details */}
+                  <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium">
+                        TOI-{solarSystem.planets[selectedPlanetIndex]?.toi}
+                      </span>
+                      {(() => {
+                        const planet = solarSystem.planets[selectedPlanetIndex];
+                        const orbitRadius = calculateOrbitRadius(
+                          planet.pl_orbper,
+                          solarSystem.starMass
+                        );
+                        const isInHZ =
+                          orbitRadius >=
+                            solarSystem.habitableZone.innerMeters &&
+                          orbitRadius <= solarSystem.habitableZone.outerMeters;
+
+                        return isInHZ ? (
+                          <span className="text-xs text-green-600 dark:text-green-400 font-semibold">
+                            🌍 In Habitable Zone
+                          </span>
+                        ) : null;
+                      })()}
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-muted-foreground">
+                          Temperature:
+                        </span>{" "}
+                        <span className="font-medium">
+                          {solarSystem.planets[
+                            selectedPlanetIndex
+                          ]?.pl_eqt.toFixed(0)}{" "}
+                          K
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">
+                          Star Temp:
+                        </span>{" "}
+                        <span className="font-medium">
+                          {solarSystem.starTemp.toFixed(0)} K
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">
+                          Star Radius:
+                        </span>{" "}
+                        <span className="font-medium">
+                          {solarSystem.starRadius.toFixed(2)} R☉
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">
+                          Planets in System:
+                        </span>{" "}
+                        <span className="font-medium">
+                          {solarSystem.planets.length}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -395,48 +696,77 @@ export default function PredictPage() {
                   <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-md">
                     <p className="text-xs text-blue-700 dark:text-blue-300">
                       ℹ️{" "}
-                      {solarSystem.planets.length > 1
-                        ? `This system (${
-                            metadata.toipfx
-                          }) already exists in the TESS catalog with ${
-                            solarSystem.planets.length - 1
-                          } known planet(s). Your detected exoplanet has been added to the visualization.`
-                        : `This is a newly detected exoplanet system (${metadata.toipfx}) not previously in the TESS catalog.`}
+                      {predictionType === "batch" &&
+                        allDetectedSystems.length > 1 && (
+                          <>
+                            Your batch prediction detected exoplanets across{" "}
+                            <strong>
+                              {allDetectedSystems.length} different solar
+                              systems
+                            </strong>
+                            . Use the system selector above to view each one.
+                            Currently viewing{" "}
+                            <strong>{solarSystem.hostStar}</strong> with{" "}
+                            <strong>{solarSystem.planets.length}</strong> planet
+                            {solarSystem.planets.length !== 1 ? "s" : ""}.
+                          </>
+                        )}
+                      {predictionType === "batch" &&
+                        allDetectedSystems.length === 1 && (
+                          <>
+                            Showing all detected exoplanets from the "
+                            <strong>{solarSystem.hostStar}</strong>" system in
+                            your batch prediction. The system includes{" "}
+                            <strong>{solarSystem.planets.length}</strong> total
+                            planet
+                            {solarSystem.planets.length !== 1 ? "s" : ""}.
+                          </>
+                        )}
+                      {predictionType === "single" &&
+                        solarSystem.planets.length > 1 &&
+                        `This system (${
+                          solarSystem.hostStar
+                        }) already exists in the TESS catalog with ${
+                          solarSystem.planets.length - 1
+                        } known planet(s). Your detected exoplanet has been added to the visualization.`}
+                      {predictionType === "single" &&
+                        solarSystem.planets.length === 1 &&
+                        `This is a newly detected exoplanet system (${solarSystem.hostStar}) not previously in the TESS catalog.`}
                     </p>
                   </div>
                 </CardContent>
               </Card>
             )}
 
-            {/* Show message if prediction was negative */}
-            {predictionType === "single" &&
-              predictionResults &&
-              !isExoplanetDetected && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <BarChart3 className="w-5 h-5" />
-                      3D System Visualization
-                    </CardTitle>
-                    <CardDescription>
-                      No exoplanet detected for visualization
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-64 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-700">
-                      <div className="text-center">
-                        <div className="text-4xl mb-4">🔭</div>
-                        <p className="text-muted-foreground font-medium">
-                          No Exoplanet Detected
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          The model did not detect an exoplanet in this data
-                        </p>
-                      </div>
+            {/* Show message if no exoplanets detected */}
+            {predictionResults && !isExoplanetDetected && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5" />
+                    3D System Visualization
+                  </CardTitle>
+                  <CardDescription>
+                    No exoplanet detected for visualization
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-64 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-700">
+                    <div className="text-center">
+                      <div className="text-4xl mb-4">🔭</div>
+                      <p className="text-muted-foreground font-medium">
+                        No Exoplanet Detected
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        {predictionType === "single"
+                          ? "The model did not detect an exoplanet in this data"
+                          : "The model did not detect any exoplanets in the batch"}
+                      </p>
                     </div>
-                  </CardContent>
-                </Card>
-              )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* 3) Planet Type Classification (PCA→KNN) */}
             <PlanetTypeClassification
