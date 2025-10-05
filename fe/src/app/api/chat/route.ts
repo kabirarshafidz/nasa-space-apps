@@ -47,7 +47,10 @@ interface PredictionResult {
 }
 
 interface PredictionResults {
-  predictions: PredictionResult[];
+  predictions: number[];  // Array of probabilities
+  predicted_labels: number[];  // Array of 0s and 1s (0=Not Exoplanet, 1=Exoplanet)
+  metadata?: Array<{ toi?: string; toipfx?: string;[key: string]: unknown }>;
+  feature_count?: number;
   [key: string]: unknown;
 }
 
@@ -91,17 +94,12 @@ function toolDatasetStats(
     }
   });
 
-  // Predicted type distribution (if available)
-  const predictedTypeCounts = new Map<string, number>();
-  if (predictionResults?.predictions) {
-    predictionResults.predictions.forEach(p => {
-      if (p.predicted_type) {
-        predictedTypeCounts.set(
-          p.predicted_type,
-          (predictedTypeCounts.get(p.predicted_type) || 0) + 1
-        );
-      }
-    });
+  // Binary prediction distribution (if available)
+  let binaryPredictionSummary = '';
+  if (predictionResults?.predicted_labels?.length) {
+    const exoplanetCount = predictionResults.predicted_labels.filter(l => l === 1).length;
+    const nonExoplanetCount = predictionResults.predicted_labels.filter(l => l === 0).length;
+    binaryPredictionSummary = `Binary predictions: ${exoplanetCount} exoplanets, ${nonExoplanetCount} non-exoplanets`;
   }
 
   const formatDist = (m: Map<string, number>) =>
@@ -120,9 +118,7 @@ function toolDatasetStats(
     `Equilibrium Temp (K) stats: ${formatStats(tempStats)}`,
     ``,
     `Classification distribution: ${formatDist(typeCounts)}`,
-    predictionResults?.predictions
-      ? `Predicted type distribution: ${formatDist(predictedTypeCounts)}`
-      : null,
+    binaryPredictionSummary || null,
     '',
     'Note: These figures are computed directly from the provided in‑memory datasets (no model tokens used).'
   ]
@@ -178,13 +174,21 @@ function toolTopConfidencePredictions(
     hasPredictions: !!predictionResults?.predictions,
     predictionCount: predictionResults?.predictions?.length || 0
   });
-  if (!predictionResults?.predictions?.length) {
+  if (!predictionResults?.predictions?.length || !predictionResults?.predicted_labels?.length) {
     return 'No prediction results available to compute top confidence planets.';
   }
 
-  const preds = [...predictionResults.predictions]
-    .filter(p => typeof p.confidence === 'number')
-    .sort((a, b) => (b.confidence! - a.confidence!))
+  // Build array of predictions with metadata
+  const predsWithMetadata = predictionResults.predictions
+    .map((prob, idx) => ({
+      idx,
+      toi: predictionResults.metadata?.[idx]?.toi || `TOI-${idx + 1}`,
+      toipfx: predictionResults.metadata?.[idx]?.toipfx || 'N/A',
+      probability: prob,
+      label: predictionResults.predicted_labels[idx]
+    }))
+    .filter(p => p.label === 1) // Only exoplanet predictions
+    .sort((a, b) => b.probability - a.probability)
     .slice(0, Math.max(1, Math.min(limit, 25)));
 
   const classMap = new Map<string, PlanetTypeClassification>();
@@ -192,21 +196,17 @@ function toolTopConfidencePredictions(
     if (c.toi) classMap.set(c.toi, c);
   });
 
-  const lines = preds.map(p => {
-    const id = p.toi || p.id || 'unknown';
-    const predicted = p.predicted_type || '—';
-    const conf = p.confidence != null ? p.confidence.toFixed(4) : '—';
-    const classified = classMap.get(id);
+  const lines = predsWithMetadata.map(p => {
+    const classified = classMap.get(p.toi);
     const actualType = classified?.type_name || 'N/A';
-    const actualConf =
-      classified?.confidence != null ? classified.confidence.toFixed(2) : '—';
-    return `${id}\tPred=${predicted} (${conf})\tClassified=${actualType} (${actualConf})`;
+    const actualConf = classified?.confidence != null ? classified.confidence.toFixed(2) : '—';
+    return `${p.toi}\tProb=${(p.probability * 100).toFixed(2)}%\tType=${actualType} (conf=${actualConf})`;
   });
 
   return [
-    `Top ${preds.length} High‑Confidence Predictions`,
+    `Top ${predsWithMetadata.length} High‑Confidence Exoplanet Predictions`,
     '---------------------------------------',
-    'ID\tPredicted (confidence)\tClassified (confidence)',
+    'TOI\tPrediction Probability\tClassified Type (confidence)',
     ...lines,
     '',
     'Served from local prediction data (no model tokens used).'
@@ -405,6 +405,43 @@ function toolQueryPlanets(
   ].join('\n');
 }
 
+function toolPredictionSummary(
+  predictionResults: PredictionResults | undefined
+): string {
+  console.log('[Tool] toolPredictionSummary called');
+  if (!predictionResults?.predicted_labels?.length) {
+    return 'No prediction results available. Please run a prediction first to see exoplanet detection results.';
+  }
+
+  const positiveCount = predictionResults.predicted_labels.filter(label => label === 1).length;
+  const negativeCount = predictionResults.predicted_labels.filter(label => label === 0).length;
+  const total = predictionResults.predicted_labels.length;
+
+  const avgConfidence = predictionResults.predictions.length > 0
+    ? predictionResults.predictions.reduce((a, b) => a + b, 0) / predictionResults.predictions.length
+    : 0;
+
+  const positivePercentage = ((positiveCount / total) * 100).toFixed(1);
+  const negativePercentage = ((negativeCount / total) * 100).toFixed(1);
+
+  return [
+    'Exoplanet Detection Prediction Summary',
+    '=====================================',
+    `Total Predictions: ${total}`,
+    '',
+    `✓ Exoplanets (Positive): ${positiveCount} (${positivePercentage}%)`,
+    `✗ Not Exoplanets (Negative): ${negativeCount} (${negativePercentage}%)`,
+    '',
+    `Average Confidence: ${(avgConfidence * 100).toFixed(2)}%`,
+    '',
+    'Note: These are binary classification predictions where:',
+    '  - Label 1 = Exoplanet detected',
+    '  - Label 0 = Not an exoplanet / False positive',
+    '',
+    'Direct count from prediction results (no model tokens used).'
+  ].join('\n');
+}
+
 function toolSearchByField(
   planetData: PlanetRecord[],
   fieldName: string,
@@ -528,9 +565,12 @@ function buildCompactContext(
     if (c.type_name) typeCounts.set(c.type_name, (typeCounts.get(c.type_name) || 0) + 1);
   });
 
-  const predictionSummary = predictionResults?.predictions
-    ? `Predictions: ${predictionResults.predictions.length}`
-    : 'Predictions: 0';
+  let predictionSummary = 'Predictions: 0';
+  if (predictionResults?.predictions?.length && predictionResults?.predicted_labels?.length) {
+    const exoplanetCount = predictionResults.predicted_labels.filter(l => l === 1).length;
+    const nonExoplanetCount = predictionResults.predicted_labels.filter(l => l === 0).length;
+    predictionSummary = `Predictions: ${predictionResults.predictions.length} (${exoplanetCount} exoplanets, ${nonExoplanetCount} non-exoplanets)`;
+  }
 
   return [
     'DATA SNAPSHOT (truncated to preserve tokens)',
@@ -583,6 +623,7 @@ You receive:
 - User messages.
 
 You have access to tools that can query the full dataset:
+- prediction_summary: Get binary prediction counts (how many exoplanets vs non-exoplanets detected)
 - dataset_stats: Get comprehensive statistics about the dataset
 - filter_radius: Filter planets by radius with comparison operators
 - top_confidence_predictions: Get the highest confidence predictions
@@ -634,6 +675,13 @@ ${contextSummary}
         });
       },
       tools: {
+        prediction_summary: tool({
+          description: 'Get binary prediction summary showing how many candidates were predicted as exoplanets vs not exoplanets. Use this when users ask "how many exoplanets" or about detection counts.',
+          inputSchema: z.object({}),
+          execute: async () => {
+            return toolPredictionSummary(predictionResults);
+          }
+        }),
         dataset_stats: tool({
           description: 'Get comprehensive statistics about the exoplanet dataset including radius stats, temperature stats, and type distributions',
           inputSchema: z.object({}),

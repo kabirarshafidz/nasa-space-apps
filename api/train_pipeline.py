@@ -66,6 +66,87 @@ try:
 except ImportError:
     HAS_XGB = False
 
+# ===== PCA/KNN artifacts for planet type classification =====
+from pathlib import Path
+import base64
+
+ART_DIR = Path("artifacts")
+TRAIN_PARQUET = ART_DIR / "planets_labeled_with_pcs.parquet"   # has PC1, PC2, kmeans_label
+PREPROC_PATH  = ART_DIR / "preproc.joblib"                     # dict: feat_cols, shifts, imputer, scaler, pca
+KNN_PATH      = ART_DIR / "knn_pc.joblib"                      # KNN trained on (PC1, PC2)
+FEAT_JSON     = ART_DIR / "features.json"                      # {"feat_cols": [...]}
+
+CLASSIFICATION_FEATURES = [
+    "pl_rade",
+    "pl_insol",
+    "pl_eqt",
+    "pl_orbper",
+    "st_teff",
+    "st_rad",
+]
+
+def _to_log_with_saved_shifts(df_raw: pd.DataFrame, feat_cols, shifts):
+    X = pd.DataFrame(index=df_raw.index, columns=feat_cols, dtype=float)
+    for c in feat_cols:
+        s = pd.to_numeric(df_raw.get(c, np.nan), errors="coerce")
+        X[c] = np.log(s + float(shifts.get(c, 0.0)))
+    return X
+
+def _compute_new_pcs(df_new_raw: pd.DataFrame, preproc: dict, feat_cols: list) -> pd.DataFrame:
+    Xlog = _to_log_with_saved_shifts(df_new_raw, feat_cols, preproc["shifts"])
+    Ximp = pd.DataFrame(preproc["imputer"].transform(Xlog), columns=feat_cols, index=Xlog.index)
+    Z    = preproc["scaler"].transform(Ximp)
+    scores = preproc["pca"].transform(Z)
+    return pd.DataFrame(scores, index=df_new_raw.index, columns=["PC1", "PC2"])
+
+def _pca_plot_base64(train_tbl: pd.DataFrame,
+                     new_pc: pd.DataFrame,
+                     new_labels: np.ndarray,
+                     pca,
+                     figsize=(8, 6),
+                     alpha_old=0.25,
+                     old_size=16,
+                     new_size=35) -> str:
+    """Render 'PCA: training vs. new data' scatter and return base64 PNG."""
+    fig, ax = plt.subplots(figsize=figsize)
+
+    # Plot training, colored by cluster if present
+    if "kmeans_label" in train_tbl.columns:
+        clusters = np.sort(train_tbl["kmeans_label"].unique())
+        cmap = plt.cm.get_cmap("tab10", max(len(clusters), 3))
+        for i, k in enumerate(clusters):
+            m = (train_tbl["kmeans_label"] == k)
+            ax.scatter(train_tbl.loc[m, "PC1"], train_tbl.loc[m, "PC2"],
+                       s=old_size, alpha=alpha_old, color=cmap(i % cmap.N),
+                       label=f"Cluster {int(k)}")
+    else:
+        ax.scatter(train_tbl["PC1"], train_tbl["PC2"],
+                   s=old_size, alpha=alpha_old, label="Training")
+
+    # New points, colored by predicted cluster with black edge
+    cmap_new = plt.cm.get_cmap("tab10", 10)
+    for k in np.unique(new_labels):
+        m = (new_labels == k)
+        ax.scatter(new_pc.loc[m, "PC1"], new_pc.loc[m, "PC2"],
+                   s=new_size, edgecolors="black", linewidths=0.9,
+                   color=cmap_new(int(k) % 10), label=f"New objects (Cluster {int(k)})")
+
+    var = pca.explained_variance_ratio_
+    ax.set_xlabel(f"PC1 ({var[0]*100:.1f}%)")
+    ax.set_ylabel(f"PC2 ({var[1]*100:.1f}%)")
+    ax.set_title("PCA: training vs. new data")
+    ax.legend(frameon=False)
+    ax.axhline(0, color="grey", linewidth=0.5)
+    ax.axvline(0, color="grey", linewidth=0.5)
+    fig.tight_layout()
+
+    buf = io.BytesIO()
+    plt.savefig(buf, format="png", dpi=150)
+    plt.close(fig)
+    buf.seek(0)
+    return base64.b64encode(buf.read()).decode("ascii")
+
+
 
 # =============== R2/S3 Configuration ===============
 R2_CONFIG = {
@@ -573,7 +654,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 @app.post("/train/cv", response_model=TrainResponse)
 async def train_with_cv(
@@ -1304,7 +1384,6 @@ async def classify_planet_types(
         error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
         print(f"ERROR in classify_planet_types: {error_detail}")
         raise HTTPException(status_code=500, detail=str(e))
-
 
 if __name__ == "__main__":
     import uvicorn

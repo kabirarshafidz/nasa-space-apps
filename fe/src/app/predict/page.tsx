@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -42,6 +42,7 @@ export default function PredictPage() {
     []
   );
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const [modelsLoading, setModelsLoading] = useState(true);
 
   // Input mode & data
   const [predictionType, setPredictionType] = useState<"batch" | "single">(
@@ -90,6 +91,7 @@ export default function PredictPage() {
   // Fetch models on mount
   useEffect(() => {
     const getPreTrainedModels = async () => {
+      setModelsLoading(true);
       try {
         const response = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}/api/models`
@@ -98,6 +100,8 @@ export default function PredictPage() {
         setPreTrainedModels(data.models || []);
       } catch (error) {
         console.error("Failed to fetch models:", error);
+      } finally {
+        setModelsLoading(false);
       }
     };
 
@@ -105,7 +109,7 @@ export default function PredictPage() {
   }, []);
 
   // Handlers
-  const handleNext = async () => {
+  const handleNext = useCallback(async () => {
     if (currentStep === 1 && !selectedModel) {
       alert("Please select a model");
       return;
@@ -143,13 +147,22 @@ export default function PredictPage() {
     } else if (currentStep < 3) {
       setCurrentStep(currentStep + 1);
     }
-  };
+  }, [
+    currentStep,
+    selectedModel,
+    handlePredict,
+    predictionType,
+    uploadedFile,
+    singleFeatures,
+    metadata,
+    fetchPlanetTypeClassifications,
+  ]);
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
     }
-  };
+  }, [currentStep]);
 
   const handleFeatureChange = (featureName: string, value: string) => {
     setSingleFeatures((prev) => ({
@@ -188,6 +201,7 @@ export default function PredictPage() {
             preTrainedModels={preTrainedModels}
             selectedModel={selectedModel}
             onModelSelect={setSelectedModel}
+            isLoading={modelsLoading}
           />
         );
 
@@ -284,7 +298,7 @@ export default function PredictPage() {
               planetTypeChart={planetTypeChart}
               planetTypeClassifications={planetTypeClassifications}
               planetData={planetData}
-              predictionResults={predictionResults}
+              predictionResults={predictionResults ?? undefined}
               modelInfo={preTrainedModels}
               pcaExplained={pcaExplained}
               kmeansK={kmeansK}
@@ -358,16 +372,19 @@ export default function PredictPage() {
               onClick={handleNext}
               disabled={
                 isLoading ||
+                knnLoading ||
                 (currentStep === 2 &&
                   predictionType === "single" &&
-                  Object.values(singleFeatures).some((v) => !v)) ||
+                  (Object.values(singleFeatures).some((v) => !v) ||
+                    !metadata.toi ||
+                    !metadata.toipfx)) ||
                 (currentStep === 2 &&
                   predictionType === "batch" &&
                   !uploadedFile) ||
                 currentStep === 3
               }
             >
-              {isLoading ? (
+              {isLoading || knnLoading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
                   Processing...

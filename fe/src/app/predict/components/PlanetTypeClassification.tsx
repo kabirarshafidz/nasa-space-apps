@@ -23,10 +23,12 @@ function toNum(v: unknown): number {
   const n = parseFloat(String(v));
   return Number.isFinite(n) ? n : NaN;
 }
+
 function fmtNum(v: unknown, digits = 3): string {
   const n = toNum(v);
   return Number.isFinite(n) ? n.toFixed(digits) : "—";
 }
+
 function fmtPct01(v: unknown, digits = 1): string {
   const n = toNum(v);
   return Number.isFinite(n) ? `${(n * 100).toFixed(digits)}%` : "—";
@@ -55,13 +57,14 @@ export function PlanetTypeClassification({
     ? planetTypeClassifications.length
     : 0;
 
-  // safer cluster counts (treat invalid/missing as cluster -1)
+  // ---- Cluster summary counts by readable label ----
   const clusterCounts = (planetTypeClassifications ?? []).reduce<
-    Record<number, number>
+    Record<string, number>
   >((acc, r) => {
-    const kRaw = toNum((r as any).type_cluster);
-    const k = Number.isFinite(kRaw) ? (kRaw as number) : -1;
-    acc[k] = (acc[k] || 0) + 1;
+    const label =
+      (r as any).type_name ??
+      `Cluster ${(r as any).type_pred ?? "N/A"}`;
+    acc[label] = (acc[label] || 0) + 1;
     return acc;
   }, {});
 
@@ -70,11 +73,11 @@ export function PlanetTypeClassification({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <BarChart3 className="w-5 h-5" />
-          Planet Type Classification (PCA → KNN)
+          Planet Type Classification (PCA + KMeans + KNN)
         </CardTitle>
         <CardDescription>
-          PCA(2D) projection with KNN on (PC1, PC2)
-          {typeof kmeansK === "number" ? ` · KMeans(k=${kmeansK}) baseline` : ""}
+          PCA (2D) projection with KMeans clusters and KNN classification
+          {typeof kmeansK === "number" ? ` · k=${kmeansK}` : ""}
         </CardDescription>
       </CardHeader>
 
@@ -86,7 +89,7 @@ export function PlanetTypeClassification({
               {planetTypeChart ? (
                 <img
                   src={`data:image/png;base64,${planetTypeChart}`}
-                  alt="PCA + KNN Cluster Plot"
+                  alt="PCA + KMeans Cluster Plot"
                   className="w-full h-full object-contain p-4"
                 />
               ) : (
@@ -99,7 +102,7 @@ export function PlanetTypeClassification({
                       Building PCA projection…
                     </p>
                     <p className="text-gray-500 dark:text-gray-400 text-sm">
-                      Running preprocessing → PCA(2) → KNN on your input
+                      Running preprocessing → PCA(2D) → KMeans + KNN
                     </p>
                   </div>
                 </div>
@@ -131,9 +134,7 @@ export function PlanetTypeClassification({
                     key={k}
                     className="rounded-md border p-3 text-sm bg-white/60 dark:bg-gray-900/40"
                   >
-                    <div className="font-medium">
-                      Cluster {Number(k) === -1 ? "N/A" : k}
-                    </div>
+                    <div className="font-medium">{k}</div>
                     <div className="text-muted-foreground">
                       {v} object{Number(v) === 1 ? "" : "s"}
                     </div>
@@ -163,29 +164,34 @@ export function PlanetTypeClassification({
               <thead className="bg-gray-50 dark:bg-gray-800">
                 <tr>
                   <th className="px-3 py-2 text-left">ID</th>
-                  <th className="px-3 py-2 text-right">PC1</th>
-                  <th className="px-3 py-2 text-right">PC2</th>
-                  <th className="px-3 py-2 text-right">Cluster</th>
+                  <th className="px-3 py-2 text-right">PCA X</th>
+                  <th className="px-3 py-2 text-right">PCA Y</th>
+                  <th className="px-3 py-2 text-right">Type</th>
                   <th className="px-3 py-2 text-right">Confidence</th>
                 </tr>
               </thead>
               <tbody>
                 {planetTypeClassifications.map((r, i) => {
-                  const id = (r as any).id ?? `row_${i + 1}`;
-                  const pc1 = fmtNum((r as any).PC1);
-                  const pc2 = fmtNum((r as any).PC2);
-                  const clusterNumRaw = toNum((r as any).type_cluster);
+                  const id = (r as any).toi ?? (r as any).id ?? `row_${i + 1}`;
+                  const pca_x = fmtNum((r as any).pca_x);
+                  const pca_y = fmtNum((r as any).pca_y);
+                  const clusterNumRaw = toNum((r as any).type_pred);
                   const clusterLabel = Number.isFinite(clusterNumRaw)
                     ? String(clusterNumRaw)
                     : "N/A";
                   const conf = fmtPct01((r as any).type_confidence);
+                  const typeName =
+                    (r as any).type_name ?? `Cluster ${clusterLabel}`;
 
                   return (
-                    <tr key={`${id}-${pc1}-${pc2}-${clusterLabel}`} className="border-t">
+                    <tr
+                      key={`${id}-${pca_x}-${pca_y}-${clusterLabel}`}
+                      className="border-t"
+                    >
                       <td className="px-3 py-2">{id}</td>
-                      <td className="px-3 py-2 text-right">{pc1}</td>
-                      <td className="px-3 py-2 text-right">{pc2}</td>
-                      <td className="px-3 py-2 text-right">{clusterLabel}</td>
+                      <td className="px-3 py-2 text-right">{pca_x}</td>
+                      <td className="px-3 py-2 text-right">{pca_y}</td>
+                      <td className="px-3 py-2 text-right">{typeName}</td>
                       <td className="px-3 py-2 text-right">{conf}</td>
                     </tr>
                   );

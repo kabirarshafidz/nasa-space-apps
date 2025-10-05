@@ -1,11 +1,15 @@
 // Type definitions for the prediction page
 
 export interface PreTrainedModel {
+  id: string;
   name: string;
   key: string;
   size: number;
-  last_modified: string;
+  f1Score: number;
+  createdAt: Date;
   url: string;
+  isDefault: boolean;
+  owner: string;
 }
 
 export interface PredictionResults {
