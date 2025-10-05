@@ -31,12 +31,6 @@ A full-stack machine learning application for detecting and classifying exoplane
 - **Scientific Analysis**: AI-powered explanations of planetary characteristics
 - **Real-time Predictions**: Interactive prediction interface with visual feedback
 
-### 🔐 User Management
-
-- **Authentication System**: Secure user login and registration
-- **Session Management**: Persistent training sessions and model history
-- **User-Specific Models**: Personal model storage and retrieval
-
 ## 🏗️ Architecture
 
 ```
@@ -97,7 +91,7 @@ nasa/
 ### 1. Clone the Repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/kabirarshafidz/nasa-space-apps.git
 cd nasa
 ```
 
@@ -163,14 +157,7 @@ R2_BUCKET_NAME=your_bucket_name
 
 ```bash
 cd api
-uvicorn main:app --reload --port 8000
-```
-
-Or use the provided script:
-
-```bash
-cd api
-./start_api.sh
+python3 train_pipeline.py
 ```
 
 ### Start the Frontend
@@ -186,7 +173,6 @@ The application will be available at:
 
 - **Frontend**: http://localhost:3000
 - **API**: http://localhost:8000
-- **API Docs**: http://localhost:8000/docs
 
 ## 📖 Usage
 
@@ -219,125 +205,6 @@ The application will be available at:
 4. View habitable zones and planetary characteristics
 5. Real-time physics calculations
 
-## 🔬 API Endpoints
-
-### Training Endpoints
-
-- `POST /train/upload-csv` - Upload training data
-- `POST /train/start-training` - Start model training
-- `GET /train/training-status/{task_id}` - Check training progress
-- `GET /training/entries` - List all training sessions
-- `POST /training/save-result` - Save training results
-
-### Prediction Endpoints
-
-- `POST /predict` - Make predictions on new data
-- `POST /predict/batch-csv` - Batch predictions from CSV
-- `GET /models` - List available models
-- `GET /models/{model_name}` - Get model details
-
-### Classification Endpoints
-
-- `POST /classify-planet-types` - Classify planets into types
-- `GET /tess-data` - Fetch TESS dataset
-- `POST /chart/{chart_type}` - Generate visualization charts
-
-### Model Management
-
-- `GET /models/list` - List all saved models
-- `DELETE /models/{model_name}` - Delete a model
-- `GET /download-model/{model_name}` - Download model file
-
-## 📊 Dataset
-
-The project uses TESS (Transiting Exoplanet Survey Satellite) data, which includes:
-
-- Planetary characteristics (radius, mass, temperature)
-- Orbital parameters (period, semi-major axis)
-- Stellar properties (temperature, radius, luminosity)
-- Discovery metadata and flags
-
-Key features used for classification:
-
-- `pl_rade`: Planet radius (Earth radii)
-- `pl_insol`: Insolation flux (Earth flux)
-- `pl_eqt`: Equilibrium temperature (K)
-- `pl_orbper`: Orbital period (days)
-- `st_teff`: Stellar effective temperature (K)
-- `st_rad`: Stellar radius (Solar radii)
-
-## 🧪 Model Performance
-
-The platform supports three classification algorithms:
-
-| Model               | Typical Accuracy | Training Time | Best For             |
-| ------------------- | ---------------- | ------------- | -------------------- |
-| XGBoost             | 90-95%           | Medium        | Balanced performance |
-| Random Forest       | 88-92%           | Fast          | Quick prototyping    |
-| Logistic Regression | 85-88%           | Very Fast     | Baseline comparison  |
-
-_Performance varies based on dataset size and hyperparameters_
-
-## 🎨 UI Features
-
-- **Dark Mode**: NASA-inspired dark theme with cosmic aesthetics
-- **Responsive Design**: Mobile-first approach with adaptive layouts
-- **Real-time Updates**: Live training progress and metrics
-- **Interactive Charts**: Hover, zoom, and explore visualizations
-- **Drag & Drop**: Easy file uploads
-- **Accessible**: WCAG 2.1 AA compliant components
-
-## 🐛 Known Issues & Limitations
-
-- Large datasets (>100k rows) may require increased memory
-- 3D visualization performance depends on GPU capabilities
-- Chatbot requires OpenAI API key
-- Authentication requires PostgreSQL database
-
-## 🤝 Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
-## 📝 Development Notes
-
-### Running Tests
-
-```bash
-# Backend tests
-cd api
-pytest
-
-# Frontend tests
-cd fe
-npm test
-```
-
-### Code Quality
-
-```bash
-# Python linting
-cd api
-flake8 .
-black .
-
-# TypeScript linting
-cd fe
-npm run lint
-```
-
-### Database Migrations
-
-```bash
-cd fe
-npx drizzle-kit push
-```
-
 ## 🔮 Future Enhancements
 
 - [ ] Support for additional datasets (Kepler, K2)
@@ -348,18 +215,6 @@ npx drizzle-kit push
 - [ ] Multi-language support
 - [ ] Collaborative training sessions
 - [ ] Custom model architecture builder
-
-## 📚 Resources
-
-- [TESS Mission](https://tess.mit.edu/)
-- [NASA Exoplanet Archive](https://exoplanetarchive.ipasa.nasa.gov/)
-- [XGBoost Documentation](https://xgboost.readthedocs.io/)
-- [Next.js Documentation](https://nextjs.org/docs)
-- [FastAPI Documentation](https://fastapi.tiangolo.com/)
-
-## 📄 License
-
-This project is open source and available under the [MIT License](LICENSE).
 
 ## 🙏 Acknowledgments
 
