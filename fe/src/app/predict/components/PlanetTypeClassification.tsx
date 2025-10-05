@@ -172,7 +172,6 @@ export function PlanetTypeClassification({
                   <th className="px-3 py-2 text-right">PCA X</th>
                   <th className="px-3 py-2 text-right">PCA Y</th>
                   <th className="px-3 py-2 text-right">Type</th>
-                  <th className="px-3 py-2 text-right">Confidence</th>
                 </tr>
               </thead>
               <tbody>
@@ -197,7 +196,6 @@ export function PlanetTypeClassification({
                       <td className="px-3 py-2 text-right">{pca_x}</td>
                       <td className="px-3 py-2 text-right">{pca_y}</td>
                       <td className="px-3 py-2 text-right">{typeName}</td>
-                      <td className="px-3 py-2 text-right">{conf}</td>
                     </tr>
                   );
                 })}
