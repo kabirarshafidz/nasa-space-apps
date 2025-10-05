@@ -51,14 +51,28 @@ function sanitizeRow(obj: Record<string, any>): SixFeatureRecord {
 
 /** Coerce/shape one row of API classifications to the UI type. */
 function coerceClassification(r: any): PlanetTypeClassification {
+  const pc1 = toNum(r?.PC1);
+  const pc2 = toNum(r?.PC2);
+  const cluster = toNum(r?.type_cluster);
+  const confidence = toNum(r?.type_confidence);
+
+  // Map cluster numbers to type names (consistent with backend)
+  const clusterNameMap: Record<number, string> = {
+    0: "Rocky Planet",
+    1: "Gas Giant",
+    2: "Ice Giant",
+  };
+
   return {
     id: r?.id ?? undefined,
-    PC1: toNum(r?.PC1),
-    PC2: toNum(r?.PC2),
-    type_cluster: Number.isFinite(toNum(r?.type_cluster))
-      ? toNum(r?.type_cluster)
-      : -1,
-    type_confidence: toNum(r?.type_confidence),
+    PC1: Number.isFinite(pc1) ? pc1 : undefined,
+    PC2: Number.isFinite(pc2) ? pc2 : undefined,
+    pca_x: Number.isFinite(pc1) ? pc1 : undefined,
+    pca_y: Number.isFinite(pc2) ? pc2 : undefined,
+    type_cluster: Number.isFinite(cluster) ? cluster : -1,
+    type_pred: Number.isFinite(cluster) ? cluster : -1,
+    type_confidence: Number.isFinite(confidence) ? confidence : undefined,
+    type_name: Number.isFinite(cluster) ? clusterNameMap[cluster] ?? `Cluster ${cluster}` : "Unknown",
   };
 }
 

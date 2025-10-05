@@ -1,0 +1,10 @@
+{
+  "feat_cols": [
+    "pl_rade",
+    "pl_insol",
+    "pl_eqt",
+    "pl_orbper",
+    "st_teff",
+    "st_rad"
+  ]
+}

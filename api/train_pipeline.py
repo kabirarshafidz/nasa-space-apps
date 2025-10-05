@@ -103,45 +103,79 @@ def _pca_plot_base64(train_tbl: pd.DataFrame,
                      new_pc: pd.DataFrame,
                      new_labels: np.ndarray,
                      pca,
-                     figsize=(8, 6),
-                     alpha_old=0.25,
-                     old_size=16,
-                     new_size=35) -> str:
+                     figsize=(10, 7),
+                     alpha_old=0.4,
+                     old_size=30,
+                     new_size=80) -> str:
     """Render 'PCA: training vs. new data' scatter and return base64 PNG."""
-    fig, ax = plt.subplots(figsize=figsize)
+    # Clean, simple styling
+    fig, ax = plt.subplots(figsize=figsize, facecolor='white')
 
-    # Plot training, colored by cluster if present
+    # Simple color palette for clusters
+    cluster_colors = {
+        0: "#6BA3D0",  # Blue
+        1: "#D4A373",  # Brown/Tan
+        2: "#90C695",  # Green
+    }
+    
+    # Plot training data, colored by cluster if present
     if "kmeans_label" in train_tbl.columns:
         clusters = np.sort(train_tbl["kmeans_label"].unique())
-        cmap = plt.cm.get_cmap("tab10", max(len(clusters), 3))
         for i, k in enumerate(clusters):
             m = (train_tbl["kmeans_label"] == k)
             ax.scatter(train_tbl.loc[m, "PC1"], train_tbl.loc[m, "PC2"],
-                       s=old_size, alpha=alpha_old, color=cmap(i % cmap.N),
-                       label=f"Cluster {int(k)}")
+                       s=old_size, alpha=alpha_old, 
+                       color=cluster_colors.get(int(k), "#999999"),
+                       label=f"Cluster {int(k)}",
+                       edgecolors='none')
     else:
         ax.scatter(train_tbl["PC1"], train_tbl["PC2"],
-                   s=old_size, alpha=alpha_old, label="Training")
+                   s=old_size, alpha=alpha_old, label="Training",
+                   color="#999999", edgecolors='none')
 
-    # New points, colored by predicted cluster with black edge
-    cmap_new = plt.cm.get_cmap("tab10", 10)
+    # Plot new objects with darker colors and circle markers
     for k in np.unique(new_labels):
         m = (new_labels == k)
+        # Darker version of cluster color
+        dark_color = cluster_colors.get(int(k), "#333333")
         ax.scatter(new_pc.loc[m, "PC1"], new_pc.loc[m, "PC2"],
-                   s=new_size, edgecolors="black", linewidths=0.9,
-                   color=cmap_new(int(k) % 10), label=f"New objects (Cluster {int(k)})")
+                   s=new_size, 
+                   color=dark_color,
+                   label=f"New objects (Cluster {int(k)})",
+                   marker='o',
+                   alpha=0.9,
+                   edgecolors='black',
+                   linewidths=1.0,
+                   zorder=5)
 
     var = pca.explained_variance_ratio_
-    ax.set_xlabel(f"PC1 ({var[0]*100:.1f}%)")
-    ax.set_ylabel(f"PC2 ({var[1]*100:.1f}%)")
-    ax.set_title("PCA: training vs. new data")
-    ax.legend(frameon=False)
-    ax.axhline(0, color="grey", linewidth=0.5)
-    ax.axvline(0, color="grey", linewidth=0.5)
+    ax.set_xlabel(f"PC1 ({var[0]*100:.1f}%)", fontsize=11)
+    ax.set_ylabel(f"PC2 ({var[1]*100:.1f}%)", fontsize=11)
+    ax.set_title("PCA: training vs. new data", fontsize=13, pad=15)
+    
+    # Simple legend
+    ax.legend(
+        loc='upper right',
+        fontsize=9,
+        frameon=True,
+        framealpha=0.9,
+    )
+    
+    # Grid and axes
+    ax.axhline(0, color='gray', linewidth=0.8, alpha=0.5)
+    ax.axvline(0, color='gray', linewidth=0.8, alpha=0.5)
+    ax.grid(True, alpha=0.2, linestyle='-', linewidth=0.5)
+    ax.set_facecolor('white')
+    
+    # Clean spines
+    for spine in ax.spines.values():
+        spine.set_edgecolor('#CCCCCC')
+        spine.set_linewidth(1.0)
+    
     fig.tight_layout()
 
     buf = io.BytesIO()
-    plt.savefig(buf, format="png", dpi=150)
+    plt.savefig(buf, format="png", dpi=150, bbox_inches="tight", facecolor='white')
     plt.close(fig)
     buf.seek(0)
     return base64.b64encode(buf.read()).decode("ascii")
@@ -1129,263 +1163,249 @@ async def classify_planet_types(
     features_json: str = Form(...),
 ):
     """
-    Classify planet types using KNN based on type_labels.csv ground truth.
-    Returns a base64-encoded scatter plot showing the classification.
+    Classify planet types using PCA+KMeans+KNN with saved artifacts.
+    Returns PC1, PC2 coordinates and cluster assignments with base64 plot.
     """
-    import base64
-    from pathlib import Path
-
     try:
+        print(f"\n{'='*60}")
+        print(f"[PCA CLASSIFICATION] Starting planet type classification")
+        print(f"{'='*60}")
+        
         # Parse inputs
         toi_list_parsed = json.loads(toi_list)
         features_list = json.loads(features_json)
+        print(f"[PCA] Received {len(features_list)} objects to classify")
+        print(f"[PCA] TOI list: {toi_list_parsed}")
 
-        # Load type labels ground truth
-        type_labels_path = Path(__file__).parent.parent / "data" / "type_labels.csv"
-        if not type_labels_path.exists():
+        # Check if artifacts exist
+        print(f"\n[PCA] Checking for artifacts:")
+        print(f"  - Training data: {TRAIN_PARQUET} -> {'✓ EXISTS' if TRAIN_PARQUET.exists() else '✗ MISSING'}")
+        print(f"  - Preprocessing: {PREPROC_PATH} -> {'✓ EXISTS' if PREPROC_PATH.exists() else '✗ MISSING'}")
+        print(f"  - KNN model: {KNN_PATH} -> {'✓ EXISTS' if KNN_PATH.exists() else '✗ MISSING'}")
+        
+        if not all([TRAIN_PARQUET.exists(), PREPROC_PATH.exists(), KNN_PATH.exists()]):
+            missing = []
+            if not TRAIN_PARQUET.exists(): missing.append(str(TRAIN_PARQUET))
+            if not PREPROC_PATH.exists(): missing.append(str(PREPROC_PATH))
+            if not KNN_PATH.exists(): missing.append(str(KNN_PATH))
             raise HTTPException(
-                status_code=404,
-                detail=f"type_labels.csv not found at {type_labels_path}. Please ensure it exists in the data/ directory.",
+                status_code=503,
+                detail=f"PCA/KNN artifacts not found: {', '.join(missing)}. Please run the training script first.",
             )
 
-        gt = pd.read_csv(type_labels_path, comment="#")
+        # Load artifacts
+        print(f"\n[PCA] Loading artifacts...")
+        train_tbl = pd.read_parquet(TRAIN_PARQUET)
+        print(f"  - Training table: {len(train_tbl)} samples, clusters: {train_tbl['kmeans_label'].unique() if 'kmeans_label' in train_tbl.columns else 'N/A'}")
+        
+        preproc = joblib.load(PREPROC_PATH)
+        print(f"  - Preprocessing loaded: {list(preproc.keys())}")
+        
+        knn = joblib.load(KNN_PATH)
+        print(f"  - KNN model loaded: {knn}")
+        
+        feat_cols = preproc["feat_cols"]
+        pca = preproc["pca"]
+        print(f"  - Features: {feat_cols}")
+        print(f"  - PCA variance explained: {pca.explained_variance_ratio_}")
 
-        # Configuration for planet type classification
-        CONFIG = {
-            "label_col": "type_cluster",
-            "features": [
-                "pl_rade",
-                "pl_insol",
-                "pl_eqt",
-                "pl_orbper",
-                "st_teff",
-                "st_rad",
-            ],
-            "knn_k": 5,
-            "prob_threshold_unknown": 0.60,
-            "label_name_map": {
-                0.0: "Sub-Neptune",
-                1.0: "Ultra-Giant",
-                2.0: "Super-Earth",
-                -1.0: "Unknown",
+        # Prepare new data
+        df_new_raw = pd.DataFrame(features_list)
+        print(f"\n[PCA] Input features shape: {df_new_raw.shape}")
+        print(f"[PCA] Input columns: {df_new_raw.columns.tolist()}")
+        
+        # Compute PCs for new data using saved preprocessing
+        print(f"[PCA] Computing principal components...")
+        new_pc = _compute_new_pcs(df_new_raw, preproc, feat_cols)
+        print(f"[PCA] PC coordinates computed:")
+        print(f"  - PC1 range: [{new_pc['PC1'].min():.3f}, {new_pc['PC1'].max():.3f}]")
+        print(f"  - PC2 range: [{new_pc['PC2'].min():.3f}, {new_pc['PC2'].max():.3f}]")
+        
+        # Predict cluster labels with KNN
+        print(f"\n[PCA] Predicting cluster labels with KNN...")
+        new_labels = knn.predict(new_pc[["PC1", "PC2"]].values)
+        print(f"[PCA] Predicted labels: {new_labels}")
+        
+        # Get prediction probabilities for confidence
+        probs = knn.predict_proba(new_pc[["PC1", "PC2"]].values)
+        confidences = probs.max(axis=1)
+        print(f"[PCA] Confidences: {confidences}")
+
+        # Build results
+        results = []
+        for i in range(len(new_pc)):
+            toi_val = toi_list_parsed[i] if i < len(toi_list_parsed) else f"row_{i}"
+            results.append({
+                "id": toi_val,
+                "PC1": float(new_pc.iloc[i]["PC1"]),
+                "PC2": float(new_pc.iloc[i]["PC2"]),
+                "type_cluster": int(new_labels[i]),
+                "type_confidence": float(confidences[i]),
+            })
+
+        # Generate PCA plot
+        print(f"\n[PCA] Generating visualization...")
+        chart_b64 = _pca_plot_base64(train_tbl, new_pc, new_labels, pca)
+        print(f"[PCA] Chart generated: {len(chart_b64)} bytes (base64)")
+
+        # Get K from training data
+        kmeans_k = int(train_tbl["kmeans_label"].nunique()) if "kmeans_label" in train_tbl.columns else None
+
+        print(f"\n[PCA] ✓ Classification complete!")
+        print(f"  - Classified: {len(results)} objects")
+        print(f"  - Clusters used (k): {kmeans_k}")
+        print(f"{'='*60}\n")
+
+        return {
+            "chart_base64": chart_b64,
+            "classifications": results,
+            "meta": {
+                "pca_var_explained": [
+                    float(pca.explained_variance_ratio_[0]),
+                    float(pca.explained_variance_ratio_[1])
+                ],
+                "kmeans_k": kmeans_k,
             },
         }
 
-        # Build feature matrix from ground truth
-        def build_X(df: pd.DataFrame, features: list) -> pd.DataFrame:
-            return df[[c for c in features if c in df.columns]].copy()
-
-        # Prepare ground truth data
-        X_gt_all = build_X(gt, CONFIG["features"])
-        if X_gt_all.empty:
-            raise HTTPException(
-                status_code=400,
-                detail="None of the configured features exist in type_labels.csv",
-            )
-
-        # Filter ground truth: remove rows with too many missing values
-        max_miss = 0.5
-        miss_frac = X_gt_all.isna().mean(axis=1)
-        mask_row_ok = miss_frac <= max_miss
-        X_gt = X_gt_all.loc[mask_row_ok]
-
-        # Get labels
-        y_gt = pd.to_numeric(gt.loc[mask_row_ok, CONFIG["label_col"]], errors="coerce")
-        mask_label_ok = y_gt.notna() & y_gt.isin([0.0, 1.0, 2.0, -1.0])
-        X_gt = X_gt.loc[mask_label_ok]
-        y_gt = y_gt.loc[mask_label_ok].astype(float).values
-
-        if X_gt.empty:
-            raise HTTPException(
-                status_code=400, detail="No valid ground truth rows after filtering"
-            )
-
-        # Create preprocessing pipeline
-        imputer = KNNImputer(n_neighbors=5, weights="distance")
-        scaler = StandardScaler()
-
-        # Fit on ground truth
-        X_gt_imp = imputer.fit_transform(X_gt.values)
-        Z_gt = scaler.fit_transform(X_gt_imp)
-
-        # Train KNN classifier
-        clf = KNeighborsClassifier(n_neighbors=CONFIG["knn_k"], weights="distance")
-        clf.fit(Z_gt, y_gt)
-
-        # Prepare new data for classification
-        df_new = pd.DataFrame(features_list)
-        X_new_all = build_X(df_new, CONFIG["features"])
-
-        # Filter new data
-        miss_frac_new = X_new_all.isna().mean(axis=1)
-        idx_ok = miss_frac_new.index[miss_frac_new <= max_miss]
-
-        results = []
-        if len(idx_ok) > 0:
-            X_new_imp = imputer.transform(X_new_all.loc[idx_ok].values)
-            Z_new = scaler.transform(X_new_imp)
-
-            probs = clf.predict_proba(Z_new)
-            preds = probs.argmax(axis=1).astype(float)
-            conf = probs.max(axis=1)
-
-            # Mark low confidence as Unknown
-            preds = np.where(conf < CONFIG["prob_threshold_unknown"], -1.0, preds)
-
-            for i, idx in enumerate(idx_ok):
-                results.append(
-                    {
-                        "toi": toi_list_parsed[idx],
-                        "type_pred": int(preds[i]),
-                        "type_confidence": float(conf[i]),
-                        "type_name": CONFIG["label_name_map"].get(preds[i], "Unknown"),
-                        "features": {
-                            k: float(v) if pd.notna(v) else None
-                            for k, v in X_new_all.loc[idx].items()
-                        },
-                    }
-                )
-
-        # Generate beautiful matplotlib scatter plot
-        # Set style for better aesthetics
-        plt.style.use('seaborn-v0_8-darkgrid')
-        fig, ax = plt.subplots(figsize=(14, 9), facecolor='white')
-        
-        # Use first two features for 2D visualization (pl_rade vs pl_insol)
-        if "pl_rade" in CONFIG["features"] and "pl_insol" in CONFIG["features"]:
-            feat_x, feat_y = "pl_rade", "pl_insol"
-
-            # Enhanced color palette
-            colors_gt = {
-                0.0: "#3b82f6",  # Blue
-                1.0: "#8b5cf6",  # Purple
-                2.0: "#10b981",  # Green
-            }
-            labels_gt = {
-                0.0: "Sub-Neptune (GT)",
-                1.0: "Ultra-Giant (GT)",
-                2.0: "Super-Earth (GT)",
-            }
-
-            # Plot ground truth with enhanced styling
-            for label_val in [0.0, 1.0, 2.0]:
-                mask = y_gt == label_val
-                if mask.any():
-                    ax.scatter(
-                        X_gt[feat_x][mask],
-                        X_gt[feat_y][mask],
-                        c=colors_gt[label_val],
-                        alpha=0.35,
-                        s=60,
-                        label=labels_gt[label_val],
-                        edgecolors='white',
-                        linewidths=0.5,
-                    )
-
-            # Plot new predictions with star markers
-            if len(idx_ok) > 0:
-                colors_pred = {
-                    0.0: "#3b82f6",
-                    1.0: "#8b5cf6",
-                    2.0: "#10b981",
-                    -1.0: "#6b7280",
-                }
-                labels_pred = {
-                    0.0: "Sub-Neptune",
-                    1.0: "Ultra-Giant",
-                    2.0: "Super-Earth",
-                    -1.0: "Unknown",
-                }
-
-                for i, idx in enumerate(idx_ok):
-                    pred_label = preds[i]
-                    # Plot star marker
-                    ax.scatter(
-                        X_new_all.loc[idx, feat_x],
-                        X_new_all.loc[idx, feat_y],
-                        c=colors_pred[pred_label],
-                        marker='*',
-                        s=500,
-                        edgecolors='black',
-                        linewidths=2.5,
-                        label=f"{labels_pred[pred_label]} (Pred)" if i == 0 else "",
-                        zorder=5,
-                    )
-                    
-                    # Add TOI label with background box
-                    ax.annotate(
-                        f"TOI {toi_list_parsed[idx]}",
-                        (X_new_all.loc[idx, feat_x], X_new_all.loc[idx, feat_y]),
-                        xytext=(8, 8),
-                        textcoords='offset points',
-                        fontsize=10,
-                        fontweight='bold',
-                        color='#1f2937',
-                        bbox=dict(
-                            boxstyle='round,pad=0.4',
-                            facecolor='white',
-                            edgecolor=colors_pred[pred_label],
-                            alpha=0.9,
-                            linewidth=2,
-                        ),
-                        zorder=6,
-                    )
-
-        # Enhanced styling
-        ax.set_xlabel("Planet Radius (Earth Radii)", fontsize=14, fontweight='bold', color='#1f2937')
-        ax.set_ylabel("Insolation Flux (Earth Flux)", fontsize=14, fontweight='bold', color='#1f2937')
-        ax.set_title(
-            "Planet Type Classification using KNN",
-            fontsize=18,
-            fontweight='bold',
-            color='#1f2937',
-            pad=20,
-        )
-        
-        # Enhanced legend
-        ax.legend(
-            loc='upper right',
-            fontsize=11,
-            frameon=True,
-            fancybox=True,
-            shadow=True,
-            framealpha=0.95,
-            edgecolor='#d1d5db',
-        )
-        
-        # Grid styling
-        ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.8, color='#9ca3af')
-        ax.set_facecolor('#f9fafb')
-        
-        # Spine styling
-        for spine in ax.spines.values():
-            spine.set_edgecolor('#d1d5db')
-            spine.set_linewidth(1.5)
-        
-        plt.tight_layout()
-
-        # Convert plot to base64
-        buffer = io.BytesIO()
-        plt.savefig(buffer, format="png", dpi=200, bbox_inches="tight", facecolor='white')
-        buffer.seek(0)
-        image_base64 = base64.b64encode(buffer.read()).decode("utf-8")
-        plt.close()
-
-        return {
-            "classifications": results,
-            "chart_base64": image_base64,
-            "total_classified": len(results),
-            "ground_truth_samples": len(y_gt),
-        }
-
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
-
         error_detail = f"{str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-        print(f"ERROR in classify_planet_types: {error_detail}")
+        print(f"\n{'='*60}")
+        print(f"[PCA ERROR] Classification failed:")
+        print(error_detail)
+        print(f"{'='*60}\n")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+# ===== A) Build cluster labels, fit PCA(2), train KNN(PC1,PC2), save artifacts =====
+import os, json, joblib
+import numpy as np
+import pandas as pd
+from pathlib import Path
+
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.metrics import silhouette_score
+from sklearn.model_selection import StratifiedKFold, GridSearchCV
+
+# ------------------- CONFIG -------------------
+CFG = {
+    "tess_csv": "./content/tess.csv",
+    "planets_keep_disp": ["CP", "KP"],     # confirmed/known planet codes in your file
+    "feat_cols": ["pl_rade", "pl_insol", "pl_eqt", "pl_orbper", "st_teff", "st_rad"],
+    "k_range": list(range(2, 7)),          # try a few k; tweak as you like
+    "kmeans_n_init": 50,
+    "kmeans_final_n_init": 200,
+    "random_state": 42,
+    "knn_neighbors_grid": [5, 9, 15, 25],
+    "cv_folds": 5,
+    "art_dir": "artifacts",
+    "labeled_out": "artifacts/planets_labeled_with_pcs.parquet",
+    "preproc_out": "artifacts/preproc.joblib",            # shifts, imputer, scaler, pca bundled
+    "kmeans_out": "artifacts/kmeans.joblib",
+    "knn_out": "artifacts/knn_pc.joblib",
+    "feat_json": "artifacts/features.json"
+}
+Path(CFG["art_dir"]).mkdir(parents=True, exist_ok=True)
+
+# ------------------- Load & filter -------------------
+df = pd.read_csv(CFG["tess_csv"], comment="#", low_memory=False)
+if "tfopwg_disp" not in df.columns:
+    raise ValueError("Expected column 'tfopwg_disp' not found.")
+
+planets = df[df["tfopwg_disp"].astype(str).str.upper().isin([s.upper() for s in CFG["planets_keep_disp"]])].copy()
+print(f"Planet rows found: {len(planets)}")
+
+feat_cols = [c for c in CFG["feat_cols"] if c in planets.columns]
+if len(feat_cols) < 2:
+    raise ValueError(f"Too few usable features among {CFG['feat_cols']} (present: {feat_cols})")
+
+X_raw = planets[feat_cols].copy()
+
+# ------------------- Safe log (record shifts) -------------------
+def log_safe_with_shift(s: pd.Series, eps=1e-12):
+    s = pd.to_numeric(s, errors="coerce")
+    m = np.nanmin(s.values)
+    shift = (-m + eps) if np.isfinite(m) and m <= 0 else 0.0
+    return np.log(s + shift), shift
+
+X_log = pd.DataFrame(index=X_raw.index)
+shifts = {}
+for c in feat_cols:
+    X_log[c], shifts[c] = log_safe_with_shift(X_raw[c])
+
+# ------------------- Impute → Scale -------------------
+imputer = SimpleImputer(strategy="median")
+X_log_imp = pd.DataFrame(imputer.fit_transform(X_log), index=X_log.index, columns=X_log.columns)
+
+scaler = StandardScaler()
+Z = scaler.fit_transform(X_log_imp)
+
+# ------------------- PCA(2) for viz + KNN features -------------------
+pca = PCA(n_components=2, random_state=CFG["random_state"])
+scores = pca.fit_transform(Z)  # shape (n_planets, 2)
+pc_df = pd.DataFrame(scores, index=X_log_imp.index, columns=["PC1", "PC2"])
+
+# ------------------- K-Means on Z (not PCs) -------------------
+best_k, best_sil = None, -np.inf
+sil_by_k = {}
+for k in CFG["k_range"]:
+    km_tmp = KMeans(n_clusters=k, n_init=CFG["kmeans_n_init"], random_state=CFG["random_state"])
+    labs_tmp = km_tmp.fit_predict(Z)
+    sil = silhouette_score(Z, labs_tmp)
+    sil_by_k[k] = sil
+    if sil > best_sil:
+        best_k, best_sil = k, sil
+
+print("Silhouette by k:", {k: round(v, 3) for k, v in sil_by_k.items()})
+print("Chosen k:", best_k)
+
+kmeans = KMeans(n_clusters=best_k, n_init=CFG["kmeans_final_n_init"], random_state=CFG["random_state"])
+labels = kmeans.fit_predict(Z)
+
+# ------------------- Assemble labeled training table -------------------
+train_tbl = planets[["toi"]].copy() if "toi" in planets.columns else pd.DataFrame(index=planets.index)
+train_tbl["kmeans_label"] = labels
+train_tbl["PC1"] = pc_df["PC1"]
+train_tbl["PC2"] = pc_df["PC2"]
+# (Optionally keep original features for audit)
+for c in feat_cols:
+    train_tbl[c] = X_raw[c].values
+
+train_tbl.to_parquet(CFG["labeled_out"])
+print(f"Saved labeled training table → {CFG['labeled_out']}")
+
+# ------------------- Train KNN on PCs -------------------
+X_knn = train_tbl[["PC1", "PC2"]].values
+y_knn = train_tbl["kmeans_label"].values
+
+knn = KNeighborsClassifier(weights="distance")
+param_grid = {"n_neighbors": CFG["knn_neighbors_grid"], "metric": ["minkowski"], "p": [2]}
+cv = StratifiedKFold(n_splits=CFG["cv_folds"], shuffle=True, random_state=CFG["random_state"])
+gs = GridSearchCV(knn, {"n_neighbors": CFG["knn_neighbors_grid"]}, cv=cv, scoring="accuracy", n_jobs=-1)
+gs.fit(X_knn, y_knn)
+knn_best = gs.best_estimator_
+print("Best KNN params:", gs.best_params_)
+
+# ------------------- Save artifacts -------------------
+# bundle preprocessing as a dict
+preproc = {"feat_cols": feat_cols, "shifts": shifts, "imputer": imputer, "scaler": scaler, "pca": pca}
+joblib.dump(preproc, CFG["preproc_out"])
+joblib.dump(kmeans, CFG["kmeans_out"])
+joblib.dump(knn_best, CFG["knn_out"])
+with open(CFG["feat_json"], "w", encoding="utf-8") as f:
+    json.dump({"feat_cols": feat_cols}, f, indent=2)
+
+print(f"Saved preprocessing → {CFG['preproc_out']}")
+print(f"Saved KMeans → {CFG['kmeans_out']}")
+print(f"Saved KNN → {CFG['knn_out']}")

@@ -20,10 +20,15 @@ export interface PredictionResults {
 }
 
 export interface PlanetTypeClassification {
-  toi: string;
-  type_pred: number;
-  type_confidence: number;
-  type_name: string;
+  id?: string;
+  PC1?: number;
+  PC2?: number;
+  type_cluster?: number;
+  type_confidence?: number;
+  type_name?: string;
+  pca_x?: number;
+  pca_y?: number;
+  type_pred?: number;
 }
 
 export interface SingleFeatures {
