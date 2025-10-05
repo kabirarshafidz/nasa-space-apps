@@ -83,7 +83,7 @@ export default function ThreeDVisualization() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="h-[calc(100vh-4rem)] overflow-y-auto px-32 py-8 w-full flex-1 overflow-y-auto pb-32 mx-auto space-y-6">
       <div className="flex flex-col gap-4">
         <div>
           <h1 className="text-4xl font-bold">
@@ -250,7 +250,7 @@ export default function ThreeDVisualization() {
                 ); // meters (SI)
                 const isInHZ =
                   orbitRadiusMeters >=
-                    selectedSystem.habitableZone.innerMeters &&
+                  selectedSystem.habitableZone.innerMeters &&
                   orbitRadiusMeters <= selectedSystem.habitableZone.outerMeters;
 
                 return (

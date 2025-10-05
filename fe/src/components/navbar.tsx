@@ -21,86 +21,78 @@ const navigationLinks = [
 
 export default function NavbarNasa() {
   return (
-    <header className="px-4 md:px-6 fixed h-16 w-screen bg-gray-800/10 z-[9999] backdrop-blur-xs border-b border-gray-900">
-      <div className="flex h-16 items-center justify-between gap-4">
-        {/* Left side */}
-        <div className="flex items-center gap-2">
-          {/* Mobile menu trigger */}
+    <header className="fixed top-0 left-0 right-0 h-16 z-[9999] bg-background/80 backdrop-blur-md border-b border-primary/20">
+      <div className="container mx-auto h-full px-4 md:px-6">
+        <div className="flex h-full items-center justify-between">
+          {/* Logo */}
+          <Link
+            href="/"
+            className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+          >
+            <img
+              src="/logo2x.png"
+              alt="NASA Exoplanet Detection"
+              width={90}
+              height={90}
+              className="h-10 w-auto"
+            />
+          </Link>
 
+          {/* Desktop Navigation */}
+          <NavigationMenu className="hidden md:flex">
+            <NavigationMenuList className="flex items-center gap-1">
+              {navigationLinks.map((link) => (
+                <NavigationMenuItem key={link.href}>
+                  <NavigationMenuLink
+                    href={link.href}
+                    className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium rounded-lg text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary/10 transition-all duration-200"
+                  >
+                    {link.label}
+                  </NavigationMenuLink>
+                </NavigationMenuItem>
+              ))}
+            </NavigationMenuList>
+          </NavigationMenu>
+
+          {/* Mobile Menu */}
           <Popover>
             <PopoverTrigger asChild>
               <Button
-                className="group size-8 md:hidden"
                 variant="ghost"
                 size="icon"
+                className="md:hidden hover:bg-primary/10 transition-colors"
               >
                 <svg
-                  className="pointer-events-none"
-                  width={16}
-                  height={16}
-                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
                   fill="none"
                   stroke="currentColor"
                   strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
                 >
-                  <path
-                    d="M4 12L20 12"
-                    className="origin-center -translate-y-[7px] transition-all duration-300 ease-[cubic-bezier(.5,.85,.25,1.1)] group-aria-expanded:translate-x-0 group-aria-expanded:translate-y-0 group-aria-expanded:rotate-[315deg]"
-                  />
-                  <path
-                    d="M4 12H20"
-                    className="origin-center transition-all duration-300 ease-[cubic-bezier(.5,.85,.25,1.8)] group-aria-expanded:rotate-45"
-                  />
-                  <path
-                    d="M4 12H20"
-                    className="origin-center translate-y-[7px] transition-all duration-300 ease-[cubic-bezier(.5,.85,.25,1.1)] group-aria-expanded:translate-y-0 group-aria-expanded:rotate-[135deg]"
-                  />
+                  <path d="M3 12h18M3 6h18M3 18h18" />
                 </svg>
+                <span className="sr-only">Toggle menu</span>
               </Button>
             </PopoverTrigger>
-            <PopoverContent align="start" className="w-36 p-1 md:hidden">
-              <NavigationMenu className="max-w-none *:w-full">
-                <NavigationMenuList className="flex-col items-start gap-0 md:gap-2">
-                  {navigationLinks.map((link, index) => (
-                    <NavigationMenuItem key={index} className="w-full">
-                      <NavigationMenuLink
-                        href={link.href}
-                        className="py-1.5"
-                        active={false}
-                      >
-                        {link.label}
-                      </NavigationMenuLink>
-                    </NavigationMenuItem>
-                  ))}
-                </NavigationMenuList>
-              </NavigationMenu>
+            <PopoverContent
+              align="end"
+              className="w-48 p-2 bg-background/95 backdrop-blur-md border-primary/30"
+            >
+              <nav className="flex flex-col gap-1">
+                {navigationLinks.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="flex items-center px-3 py-2 text-sm font-medium rounded-md text-primary-foreground/70 hover:text-primary-foreground hover:bg-primary/10 transition-colors"
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </nav>
             </PopoverContent>
           </Popover>
-          {/* Main nav */}
-          <div className="flex items-center gap-6">
-            <Link href="/" className="text-primary hover:text-primary/90">
-              <img src="/logo2x.png" alt="logo" width={100} height={100} />
-            </Link>
-            {/* Navigation menu */}
-            <NavigationMenu className="max-md:hidden">
-              <NavigationMenuList className="gap-2">
-                {navigationLinks.map((link, index) => (
-                  <NavigationMenuItem key={index}>
-                    <NavigationMenuLink
-                      active={false}
-                      href={link.href}
-                      className="text-muted-foreground hover:text-primary py-1.5 font-medium"
-                    >
-                      {link.label}
-                    </NavigationMenuLink>
-                  </NavigationMenuItem>
-                ))}
-              </NavigationMenuList>
-            </NavigationMenu>
-          </div>
         </div>
       </div>
     </header>

@@ -792,89 +792,91 @@ export default function PredictPage() {
   };
 
   return (
-    <div className="h-[calc(100vh-4rem)] overflow-y-auto ">
-      <div className="container mx-auto px-4 py-8 max-w-7xl">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-4xl font-bold mb-2">
-            Predict Exoplanets from Your Data
-          </h1>
-          <p className="text-muted-foreground">
-            Use machine learning models to predict exoplanet candidates
-          </p>
+    <div className="flex flex-col h-[calc(100vh-4rem)]">
+      <div className="px-10 py-8 w-full flex-1 overflow-y-auto pb-32">
+        <div className="max-w-7xl w-full mx-auto">
+          {/* Header */}
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold text-primary-foreground mb-2">
+              Predict Exoplanets from Your Data
+            </h1>
+            <p className="text-primary-foreground/70">
+              Use machine learning models to predict exoplanet candidates
+            </p>
+          </div>
+
+          {/* Stepper */}
+          <div className="mb-8">
+            <Stepper value={currentStep}>
+              {steps.map(({ step, title }) => (
+                <StepperItem
+                  key={step}
+                  step={step}
+                  className="not-last:flex-1 max-md:items-start"
+                >
+                  <StepperTrigger className="rounded max-md:flex-col">
+                    <StepperIndicator />
+                    <div className="text-center md:text-left">
+                      <StepperTitle>{title}</StepperTitle>
+                    </div>
+                  </StepperTrigger>
+                  {step < steps.length && (
+                    <StepperSeparator className="max-md:mt-3.5 md:mx-4" />
+                  )}
+                </StepperItem>
+              ))}
+            </Stepper>
+          </div>
+
+          {/* Content */}
+          <div className="mb-24">{renderStepContent()}</div>
         </div>
+      </div>
 
-        {/* Stepper */}
-        <div className="mb-8">
-          <Stepper value={currentStep} className="w-full">
-            {steps.map((step, index) => (
-              <StepperItem
-                key={step.step}
-                step={step.step}
-                className="not-last:flex-1 max-md:items-start"
-              >
-                <StepperTrigger className="rounded max-md:flex-col">
-                  <StepperIndicator />
-                  <div className="text-center md:text-left">
-                    <StepperTitle>{step.title}</StepperTitle>
-                  </div>
-                </StepperTrigger>
-                {index < steps.length - 1 && (
-                  <StepperSeparator className="max-md:mt-3.5 md:mx-4" />
-                )}
-              </StepperItem>
-            ))}
-          </Stepper>
-        </div>
-
-        {/* Content */}
-        <div className="mb-24">{renderStepContent()}</div>
-
-        {/* Nav Buttons */}
-        <div className="fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-md border-t border-primary/20 shadow-lg">
-          <div className="w-full max-w-7xl mx-auto py-4 px-4">
-            <div className="flex justify-between gap-4">
-              <Button
-                variant="outline"
-                onClick={handleBack}
-                disabled={currentStep === 1}
-                className="border-primary/30 bg-primary/5 hover:bg-primary/20 text-primary-foreground"
-              >
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back
-              </Button>
-              <Button
-                onClick={handleNext}
-                disabled={
-                  isLoading ||
-                  knnLoading ||
-                  (currentStep === 2 &&
-                    predictionType === "single" &&
-                    (Object.values(singleFeatures).some((v) => !v) ||
-                      !metadata.toi ||
-                      !metadata.toipfx)) ||
-                  (currentStep === 2 &&
-                    predictionType === "batch" &&
-                    !uploadedFile) ||
-                  currentStep === 3
-                }
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
-              >
-                {isLoading || knnLoading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                    Processing...
-                  </>
-                ) : currentStep === 3 ? (
-                  "Finished"
-                ) : (
-                  <>
-                    {currentStep === 2 ? "Predict" : "Next"}
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </>
-                )}
-              </Button>
-            </div>
+      {/* Navigation Buttons - Fixed at Bottom */}
+      <div className="fixed bottom-0 left-0 right-0 bg-background border-t border-primary/20 shadow-lg">
+        <div className="w-full max-w-7xl mx-auto py-4">
+          <div className="flex justify-between">
+            <Button
+              variant="outline"
+              onClick={handleBack}
+              disabled={currentStep === 1}
+              className="border-primary/30 bg-primary/5 hover:bg-primary/20 text-primary-foreground"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back
+            </Button>
+            <Button
+              onClick={handleNext}
+              disabled={
+                isLoading ||
+                knnLoading ||
+                (currentStep === 2 &&
+                  predictionType === "single" &&
+                  (Object.values(singleFeatures).some((v) => !v) ||
+                    !metadata.toi ||
+                    !metadata.toipfx)) ||
+                (currentStep === 2 &&
+                  predictionType === "batch" &&
+                  !uploadedFile) ||
+                currentStep === 3
+              }
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              {isLoading || knnLoading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                  Processing...
+                </>
+              ) : currentStep === 3 ? (
+                "Finished"
+              ) : (
+                <>
+                  {currentStep === 2 ? "Predict" : "Next"}
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </>
+              )}
+            </Button>
           </div>
         </div>
       </div>
