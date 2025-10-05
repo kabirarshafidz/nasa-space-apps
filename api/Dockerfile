@@ -1,22 +1,18 @@
-# Use Alpine Linux with Python 3.11 for minimal image size
-FROM python:3.11-alpine
+# Use Debian slim for better compatibility with scientific Python packages
+FROM python:3.11-slim-bookworm
 
 # Set working directory
 WORKDIR /app
 
 # Install system dependencies for scientific Python packages
-# These are needed to build numpy, pandas, scikit-learn, etc.
-RUN apk add --no-cache \
-    gcc \
-    g++ \
-    musl-dev \
-    linux-headers \
-    libffi-dev \
-    openblas-dev \
-    lapack-dev \
+# These ensure packages like matplotlib and xgboost can run properly
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
     gfortran \
-    freetype-dev \
-    libpng-dev
+    libopenblas-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Copy requirements and install dependencies
 COPY requirements.txt .
@@ -48,5 +44,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:8000/', timeout=5)"
 
 # Run the application with production settings
-# Using python -m ensures proper module imports for pickle/joblib
-CMD ["python", "-m", "uvicorn", "train_pipeline:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+# Run uvicorn directly (not with python -m) to ensure proper pickle deserialization
+CMD ["uvicorn", "train_pipeline:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

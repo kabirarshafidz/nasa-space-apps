@@ -186,8 +186,8 @@ def _pca_plot_base64(train_tbl: pd.DataFrame,
 # =============== R2/S3 Configuration ===============
 R2_CONFIG = {
     "endpoint_url": os.getenv("R2_ENDPOINT_URL", "https://26966518ccbce9889c6f3ca4b63214d8.r2.cloudflarestorage.com"),
-    "aws_access_key_id": os.getenv("AWS_ACCESS_KEY_ID", "7ba8deb0be81b32abb7f1f64b53c4e7b"),
-    "aws_secret_access_key": os.getenv("AWS_SECRET_ACCESS_KEY", "9d25ce2cb2569eedcc1f0194750546a9aa725022bd6460e995ea9cb39fdf85b1"),
+    "aws_access_key_id": os.getenv("AWS_ACCESS_KEY_ID", ""),
+    "aws_secret_access_key": os.getenv("AWS_SECRET_ACCESS_KEY", ""),
     "region_name": os.getenv("AWS_REGION", "auto"),
     "bucket_name": os.getenv("R2_BUCKET_NAME", "nasa"),
     "public_url_base": os.getenv("R2_PUBLIC_URL_BASE", "https://pub-000e8ab9810a4b32ae818ab4c4881da5.r2.dev"),
@@ -306,6 +306,9 @@ class LogTransformer(BaseEstimator, TransformerMixin):
             else:
                 X[c] = logged
         return X
+
+
+LogTransformer.__module__ = "train_pipeline"
 
 
 # =============== Fix for pickle deserialization ===============
