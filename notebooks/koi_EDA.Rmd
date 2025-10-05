@@ -1,0 +1,187 @@
+---
+title: "EDA"
+output: html_document
+editor: visual
+embed-resources: TRUE
+---
+
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(GGally)
+library(caret)
+library(pROC)
+```
+
+```{r}
+dat = read_csv("datasets/KOIcumulative_noerr.csv", skip = 86)
+dat
+```
+
+```{r}
+visdat::vis_miss(dat)
+```
+
+```{r}
+colnames(dat)
+```
+
+```{r}
+# Recommended feature set (without identifiers or target leakage)
+selected_features <- c(
+  "koi_period", "koi_duration", "koi_depth", "koi_ror", "koi_prad",
+  "koi_sma", "koi_incl", "koi_impact", "koi_model_snr",
+  "koi_teq", "koi_insol", "koi_num_transits", "koi_count",
+  "koi_steff", "koi_slogg", "koi_smet", "koi_srad", "koi_smass"
+)
+
+# Target column
+target <- "koi_disposition"
+
+# Subset the dataset
+koi_subset <- dat[, c(selected_features, target)]
+
+# Check structure
+str(koi_subset)
+
+# Quick summary
+summary(koi_subset)
+
+```
+
+```{r}
+koi_bin = koi_subset %>% 
+  filter(koi_disposition %in% c("CONFIRMED", "FALSE POSITIVE")) %>% 
+  mutate(koi_disposition = factor(koi_disposition,
+                                  levels = c("CONFIRMED", "FALSE POSITIVE"),
+                                  labels = c("C", "FP"))) %>% 
+  drop_na()
+summary(koi_bin)
+
+formula_str = paste("koi_disposition ~", paste(selected_features, collapse = " + "))
+formula = as.formula(formula_str)
+
+```
+
+```{r}
+set.seed(42)
+# koi_disposition ~ .
+
+# ----------------------------
+# 1. Train / Test Split
+# ----------------------------
+train_index <- createDataPartition(koi_bin$koi_disposition, p = 0.8, list = FALSE)
+train_set <- koi_bin[train_index, ]
+test_set  <- koi_bin[-train_index, ]
+
+# ----------------------------
+# 2. K-fold CV on training set
+# ----------------------------
+train_control <- trainControl(
+  method = "cv",
+  number = 5,                  # 5-fold CV
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary,
+  savePredictions = "final"
+)
+
+glm_cv <- train(
+  koi_disposition ~ ., 
+  data = train_set,
+  method = "glm",
+  family = "binomial",
+  trControl = train_control,
+  metric = "ROC"                # optimize AUC-ROC
+)
+
+print(glm_cv)
+```
+
+```{r}
+# ----------------------------
+# 3. Evaluate on Hold-out Test Set
+# ----------------------------
+# Predict probabilities & classes
+test_probs <- predict(glm_cv, newdata = test_set, type = "prob")
+test_pred  <- predict(glm_cv, newdata = test_set)
+
+# Confusion Matrix
+cm <- confusionMatrix(test_pred, test_set$koi_disposition)
+print(cm)
+
+# ROC & AUC
+roc_curve <- roc(response = test_set$koi_disposition,
+                 predictor = test_probs$C,
+                 levels = c("C", "FP"))
+plot(roc_curve, col = "blue", lwd = 2, main = "ROC Curve - Test Set")
+auc(roc_curve)
+```
+
+```{r}
+koi_mdl = glm(
+  koi_disposition ~ ., 
+  data = train_set,
+  family = binomial
+)
+summary(koi_mdl)
+```
+
+```{r}
+ggplot(koi_bin,
+       aes(x = log(koi_depth), fill = koi_disposition, alpha = .6)) +
+  geom_density()
+```
+
+```{r}
+ggplot(koi_bin,
+       aes(x = log(koi_period), fill = koi_disposition, alpha = .6)) +
+  geom_density()
+```
+
+```{r}
+ggplot(koi_bin,
+       aes(x = log(koi_ror), fill = koi_disposition, alpha = .6)) +
+  geom_density()
+```
+
+## Stuff to improve
+
+koi_depth
+
+koi_period
+
+koi_ror
+
+## Prep for NN classification
+
+```{r}
+dat_num = dat %>% 
+  select(where(is.numeric),
+         koi_disposition,
+         -c(rowid,
+            kepid,
+            koi_score,
+            koi_incl,
+            koi_tce_plnt_num,
+            koi_bin_oedp_sig,
+            ra, dec,
+            ),
+         -starts_with("koi_fpflag"),
+         -starts_with("koi_time0"),
+         -starts_with("koi_fwm"),
+         -starts_with("koi_dicco")
+         ) %>% 
+  select(where(~ n_distinct(.) > 1) | koi_disposition)
+str(dat_num)
+```
+
+```{r}
+dat_num_co = dat_num %>% 
+  filter(koi_disposition == "CONFIRMED") %>% 
+  select(-koi_disposition)
+str(dat_num_co)
+```
+
+```{r}
+write_csv(dat_num_co, "datasets/KOI-confirmed-num.csv")
+```
