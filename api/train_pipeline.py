@@ -518,11 +518,21 @@ def upload_to_r2(file_content, filename: str) -> str:
     """Upload file to R2 and return public URL"""
     try:
         s3_client = get_s3_client()
+        
+        # Determine content type based on file extension
+        content_type = "application/octet-stream"
+        if filename.endswith(".html"):
+            content_type = "text/html"
+        elif filename.endswith(".png"):
+            content_type = "image/png"
+        elif filename.endswith(".jpg") or filename.endswith(".jpeg"):
+            content_type = "image/jpeg"
+        
         s3_client.put_object(
             Bucket=R2_CONFIG["bucket_name"],
             Key=filename,
             Body=file_content,
-            ContentType="application/octet-stream",
+            ContentType=content_type,
         )
         public_url = f"{R2_CONFIG['public_url_base']}/{filename}"
         return public_url
@@ -589,15 +599,21 @@ async def train_with_cv(
 
         # Read and clean data
         if file is not None:
+            print(f"[TRAIN_CV] Using uploaded file: {file.filename}")
             content = await file.read()
             raw_df = pd.read_csv(io.BytesIO(content), comment="#")
         elif csv_url is not None:
+            print(f"[TRAIN_CV] Downloading CSV from URL: {csv_url}")
             import requests
 
             response = requests.get(csv_url)
             response.raise_for_status()
+            print(
+                f"[TRAIN_CV] CSV downloaded successfully, size: {len(response.content)} bytes"
+            )
             raw_df = pd.read_csv(io.BytesIO(response.content), comment="#")
         else:
+            print("[TRAIN_CV] ERROR: Neither file nor csv_url provided!")
             raise HTTPException(
                 status_code=400, detail="Either file or csv_url must be provided"
             )
@@ -1150,40 +1166,43 @@ async def classify_planet_types(
                     }
                 )
 
-        # Generate scatter plot visualization
-        plt.figure(figsize=(12, 8))
-
+        # Generate beautiful matplotlib scatter plot
+        # Set style for better aesthetics
+        plt.style.use('seaborn-v0_8-darkgrid')
+        fig, ax = plt.subplots(figsize=(14, 9), facecolor='white')
+        
         # Use first two features for 2D visualization (pl_rade vs pl_insol)
         if "pl_rade" in CONFIG["features"] and "pl_insol" in CONFIG["features"]:
             feat_x, feat_y = "pl_rade", "pl_insol"
 
-            # Plot ground truth
+            # Enhanced color palette
             colors_gt = {
-                0.0: "#3b82f6",
-                1.0: "#8b5cf6",
-                2.0: "#10b981",
-                -1.0: "#6b7280",
+                0.0: "#3b82f6",  # Blue
+                1.0: "#8b5cf6",  # Purple
+                2.0: "#10b981",  # Green
             }
             labels_gt = {
                 0.0: "Sub-Neptune (GT)",
                 1.0: "Ultra-Giant (GT)",
                 2.0: "Super-Earth (GT)",
-                -1.0: "Unknown (GT)",
             }
 
+            # Plot ground truth with enhanced styling
             for label_val in [0.0, 1.0, 2.0]:
                 mask = y_gt == label_val
                 if mask.any():
-                    plt.scatter(
+                    ax.scatter(
                         X_gt[feat_x][mask],
                         X_gt[feat_y][mask],
                         c=colors_gt[label_val],
-                        alpha=0.3,
-                        s=30,
+                        alpha=0.35,
+                        s=60,
                         label=labels_gt[label_val],
+                        edgecolors='white',
+                        linewidths=0.5,
                     )
 
-            # Plot new predictions
+            # Plot new predictions with star markers
             if len(idx_ok) > 0:
                 colors_pred = {
                     0.0: "#3b82f6",
@@ -1192,47 +1211,82 @@ async def classify_planet_types(
                     -1.0: "#6b7280",
                 }
                 labels_pred = {
-                    0.0: "Sub-Neptune (Pred)",
-                    1.0: "Ultra-Giant (Pred)",
-                    2.0: "Super-Earth (Pred)",
-                    -1.0: "Unknown (Pred)",
+                    0.0: "Sub-Neptune",
+                    1.0: "Ultra-Giant",
+                    2.0: "Super-Earth",
+                    -1.0: "Unknown",
                 }
 
                 for i, idx in enumerate(idx_ok):
                     pred_label = preds[i]
-                    plt.scatter(
+                    # Plot star marker
+                    ax.scatter(
                         X_new_all.loc[idx, feat_x],
                         X_new_all.loc[idx, feat_y],
                         c=colors_pred[pred_label],
-                        marker="*",
-                        s=300,
-                        edgecolors="black",
-                        linewidths=2,
-                        label=labels_pred[pred_label] if i == 0 else "",
+                        marker='*',
+                        s=500,
+                        edgecolors='black',
+                        linewidths=2.5,
+                        label=f"{labels_pred[pred_label]} (Pred)" if i == 0 else "",
+                        zorder=5,
                     )
-
-                    # Add TOI label
-                    plt.annotate(
-                        toi_list_parsed[idx],
+                    
+                    # Add TOI label with background box
+                    ax.annotate(
+                        f"TOI {toi_list_parsed[idx]}",
                         (X_new_all.loc[idx, feat_x], X_new_all.loc[idx, feat_y]),
-                        xytext=(5, 5),
-                        textcoords="offset points",
-                        fontsize=9,
-                        fontweight="bold",
+                        xytext=(8, 8),
+                        textcoords='offset points',
+                        fontsize=10,
+                        fontweight='bold',
+                        color='#1f2937',
+                        bbox=dict(
+                            boxstyle='round,pad=0.4',
+                            facecolor='white',
+                            edgecolor=colors_pred[pred_label],
+                            alpha=0.9,
+                            linewidth=2,
+                        ),
+                        zorder=6,
                     )
 
-        plt.xlabel("Planet Radius (Earth Radii)", fontsize=12)
-        plt.ylabel("Insolation Flux (Earth Flux)", fontsize=12)
-        plt.title(
-            "Planet Type Classification using KNN", fontsize=14, fontweight="bold"
+        # Enhanced styling
+        ax.set_xlabel("Planet Radius (Earth Radii)", fontsize=14, fontweight='bold', color='#1f2937')
+        ax.set_ylabel("Insolation Flux (Earth Flux)", fontsize=14, fontweight='bold', color='#1f2937')
+        ax.set_title(
+            "Planet Type Classification using KNN",
+            fontsize=18,
+            fontweight='bold',
+            color='#1f2937',
+            pad=20,
         )
-        plt.legend(loc="best", fontsize=9)
-        plt.grid(True, alpha=0.3)
+        
+        # Enhanced legend
+        ax.legend(
+            loc='upper right',
+            fontsize=11,
+            frameon=True,
+            fancybox=True,
+            shadow=True,
+            framealpha=0.95,
+            edgecolor='#d1d5db',
+        )
+        
+        # Grid styling
+        ax.grid(True, alpha=0.3, linestyle='--', linewidth=0.8, color='#9ca3af')
+        ax.set_facecolor('#f9fafb')
+        
+        # Spine styling
+        for spine in ax.spines.values():
+            spine.set_edgecolor('#d1d5db')
+            spine.set_linewidth(1.5)
+        
         plt.tight_layout()
 
         # Convert plot to base64
         buffer = io.BytesIO()
-        plt.savefig(buffer, format="png", dpi=150, bbox_inches="tight")
+        plt.savefig(buffer, format="png", dpi=200, bbox_inches="tight", facecolor='white')
         buffer.seek(0)
         image_base64 = base64.b64encode(buffer.read()).decode("utf-8")
         plt.close()

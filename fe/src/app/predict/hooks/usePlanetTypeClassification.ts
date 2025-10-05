@@ -1,72 +1,163 @@
-import { useState } from "react";
+// app/predict/hooks/usePlanetTypeClassification.ts
+"use client";
+
+import { useCallback, useState } from "react";
 import { PlanetTypeClassification, Metadata } from "../types";
 import { parseCSVFeatures } from "../utils/csvParser";
 
-const CLASSIFICATION_FEATURES = [
+// Only the 6 features used by your PCA/KNN artifacts
+export const CLASSIFICATION_FEATURES = [
   "pl_rade",
   "pl_insol",
   "pl_eqt",
   "pl_orbper",
   "st_teff",
   "st_rad",
-];
+] as const;
+
+type SixFeatureRecord = Partial<Record<(typeof CLASSIFICATION_FEATURES)[number], number | null>>;
+
+type APIResponse = {
+  chart_base64: string | null;
+  classifications: Array<{
+    id?: string | number | null;
+    PC1?: number | string | null;
+    PC2?: number | string | null;
+    type_cluster?: number | string | null;
+    type_confidence?: number | string | null;
+  }>;
+  meta?: {
+    pca_var_explained?: [number, number];
+    kmeans_k?: number;
+  };
+};
+
+function toNum(v: unknown): number {
+  if (v === null || v === undefined) return NaN;
+  if (typeof v === "number") return v;
+  const n = Number.parseFloat(String(v));
+  return Number.isFinite(n) ? n : NaN;
+}
+
+/** Keep only the 6 features and coerce to numbers (or null if not finite). */
+function sanitizeRow(obj: Record<string, any>): SixFeatureRecord {
+  const out: SixFeatureRecord = {};
+  for (const key of CLASSIFICATION_FEATURES) {
+    const n = toNum(obj?.[key]);
+    out[key] = Number.isFinite(n) ? n : null;
+  }
+  return out;
+}
+
+/** Coerce/shape one row of API classifications to the UI type. */
+function coerceClassification(r: any): PlanetTypeClassification {
+  return {
+    id: r?.id ?? undefined,
+    PC1: toNum(r?.PC1),
+    PC2: toNum(r?.PC2),
+    type_cluster: Number.isFinite(toNum(r?.type_cluster))
+      ? toNum(r?.type_cluster)
+      : -1,
+    type_confidence: toNum(r?.type_confidence),
+  };
+}
 
 export function usePlanetTypeClassification() {
   const [planetTypeChart, setPlanetTypeChart] = useState<string | null>(null);
   const [planetTypeClassifications, setPlanetTypeClassifications] = useState<
     PlanetTypeClassification[]
   >([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pcaExplained, setPcaExplained] = useState<[number, number] | undefined>(undefined);
+  const [kmeansK, setKmeansK] = useState<number | undefined>(undefined);
 
-  const fetchPlanetTypeClassifications = async (
-    metadataArray: Metadata[],
-    featuresData: any
-  ) => {
-    try {
-      const formData = new FormData();
+  const fetchPlanetTypeClassifications = useCallback(
+    async (metadataArray: Metadata[] = [], featuresData: string | Array<Record<string, any>>) => {
+      setLoading(true);
+      setError(null);
+      try {
+        // ---- Build FormData ----
+        const formData = new FormData();
 
-      // Extract TOI list
-      const toiList = metadataArray.map((m) => m.toi);
-      formData.append("toi_list", JSON.stringify(toiList));
+        // TOI / row identifiers (optional)
+        const toiList = (metadataArray ?? []).map((m) => m?.toi ?? null);
+        formData.append("toi_list", JSON.stringify(toiList));
 
-      // Prepare features JSON
-      let featuresList: Array<Record<string, number | null>> = [];
-      
-      if (typeof featuresData === "string") {
-        try {
-          featuresList = parseCSVFeatures(featuresData, CLASSIFICATION_FEATURES);
-        } catch (error) {
-          console.error("Could not parse CSV for planet type classification:", error);
-          return;
+        // Features payload
+        let featuresList: SixFeatureRecord[] = [];
+
+        if (typeof featuresData === "string") {
+          // CSV path: parse + keep only the 6 columns
+          // parseCSVFeatures(csvText, keepCols[]) -> Array<Record<string, number|null>>
+          const parsed = parseCSVFeatures(featuresData, [...CLASSIFICATION_FEATURES]);
+          featuresList = parsed.map(sanitizeRow);
+        } else if (Array.isArray(featuresData)) {
+          // Rows path: sanitize each row
+          featuresList = featuresData.map((r) => sanitizeRow(r ?? {}));
+        } else {
+          featuresList = [];
         }
-      } else {
-        // Single prediction
-        featuresList = featuresData;
-      }
 
-      formData.append("features_json", JSON.stringify(featuresList));
+        formData.append("features_json", JSON.stringify(featuresList));
 
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_ENDPOINT}/classify/planet-types`,
-        {
+        // ---- Call API ----
+        const endpoint = `${process.env.NEXT_PUBLIC_API_ENDPOINT}/classify/planet-types`;
+        const res = await fetch(endpoint, {
           method: "POST",
           body: formData,
-        }
-      );
+        });
 
-      if (response.ok) {
-        const data = await response.json();
-        setPlanetTypeChart(data.chart_base64);
-        setPlanetTypeClassifications(data.classifications || []);
+        if (!res.ok) {
+          const msg = await res.text().catch(() => "");
+          throw new Error(`KNN API ${res.status}: ${msg || "request failed"}`);
+        }
+
+        const data: APIResponse = await res.json();
+
+        // ---- Normalize response ----
+        const rows = Array.isArray(data?.classifications)
+          ? data.classifications.map(coerceClassification)
+          : [];
+
+        setPlanetTypeChart(typeof data?.chart_base64 === "string" ? data.chart_base64 : null);
+        setPlanetTypeClassifications(rows);
+
+        if (Array.isArray(data?.meta?.pca_var_explained)) {
+          setPcaExplained(data.meta!.pca_var_explained as [number, number]);
+        } else {
+          setPcaExplained(undefined);
+        }
+        setKmeansK(
+          typeof data?.meta?.kmeans_k === "number" ? data.meta!.kmeans_k : undefined
+        );
+
+        // quick dev signal
+        if (!data?.chart_base64) console.warn("Planet types: API returned no chart_base64");
+        if (!rows.length) console.warn("Planet types: API returned 0 classifications");
+      } catch (e: any) {
+        console.error(e);
+        setError(e?.message ?? "Unknown error");
+        setPlanetTypeChart(null);
+        setPlanetTypeClassifications([]);
+        setPcaExplained(undefined);
+        setKmeansK(undefined);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error("Planet type classification error:", error);
-      // Don't fail the whole prediction if classification fails
-    }
-  };
+    },
+    []
+  );
 
   return {
+    // state
+    loading,
+    error,
     planetTypeChart,
     planetTypeClassifications,
+    pcaExplained,
+    kmeansK,
+    // action
     fetchPlanetTypeClassifications,
   };
 }

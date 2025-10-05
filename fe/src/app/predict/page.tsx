@@ -34,12 +34,16 @@ import { ResultsTable } from "./components/ResultsTable";
 import { PlanetTypeClassification } from "./components/PlanetTypeClassification";
 
 export default function PredictPage() {
-  // State
+  // Stepper state
   const [currentStep, setCurrentStep] = useState(1);
+
+  // Models
   const [preTrainedModels, setPreTrainedModels] = useState<PreTrainedModel[]>(
     []
   );
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
+
+  // Input mode & data
   const [predictionType, setPredictionType] = useState<"batch" | "single">(
     "single"
   );
@@ -62,13 +66,18 @@ export default function PredictPage() {
     toi: "",
     toipfx: "",
   });
+
   const [planetData, setPlanetData] = useState<any[]>([]);
 
   // Custom hooks
   const { isLoading, predictionResults, handlePredict } = usePrediction();
   const {
+    loading: knnLoading,
+    error: knnError,
     planetTypeChart,
     planetTypeClassifications,
+    pcaExplained,
+    kmeansK,
     fetchPlanetTypeClassifications,
   } = usePlanetTypeClassification();
 
@@ -114,21 +123,21 @@ export default function PredictPage() {
       if (result) {
         // Prepare planet data for chatbot
         let planetDataArray: any[] = [];
-        if (predictionType === 'batch' && result.csvText) {
-          // Import the CSV parser
-          const { parseCSVToObjects } = await import('./utils/csvParser');
+        if (predictionType === "batch" && result.csvText) {
+          // Import the CSV parser on demand
+          const { parseCSVToObjects } = await import("./utils/csvParser");
           planetDataArray = parseCSVToObjects(result.csvText);
         } else {
           planetDataArray = [{ ...singleFeatures, ...metadata }];
         }
-
         setPlanetData(planetDataArray);
 
-        // Fetch planet type classifications
+        // Kick off PCA→KNN type classifications
         await fetchPlanetTypeClassifications(
-          result.results.metadata || [],
+          result.results?.metadata || [],
           result.csvText || [singleFeatures]
         );
+
         setCurrentStep(3);
       }
     } else if (currentStep < 3) {
@@ -201,7 +210,7 @@ export default function PredictPage() {
       case 3:
         return (
           <div className="space-y-6">
-            {/* 1. Results Table */}
+            {/* 1) Prediction Results */}
             {predictionResults && (
               <Card>
                 <CardHeader>
@@ -216,7 +225,7 @@ export default function PredictPage() {
               </Card>
             )}
 
-            {/* 2. 3D Visualization */}
+            {/* 2) 3D Visualization (placeholder) */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -240,7 +249,7 @@ export default function PredictPage() {
                   </div>
                 </div>
 
-                {/* Info below 3D viz */}
+                {/* Info below 3D viz (static placeholders) */}
                 <div className="grid grid-cols-3 gap-4 text-center">
                   <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                     <div className="text-lg font-semibold text-blue-600 dark:text-blue-400">
@@ -270,14 +279,23 @@ export default function PredictPage() {
               </CardContent>
             </Card>
 
-            {/* 3. Planet Type Classification */}
+            {/* 3) Planet Type Classification (PCA→KNN) */}
             <PlanetTypeClassification
               planetTypeChart={planetTypeChart}
               planetTypeClassifications={planetTypeClassifications}
               planetData={planetData}
               predictionResults={predictionResults}
               modelInfo={preTrainedModels}
+              pcaExplained={pcaExplained}
+              kmeansK={kmeansK}
             />
+
+            {/* Optional: surface KNN errors */}
+            {knnError && (
+              <p className="text-sm text-red-500">
+                PCA/KNN classification error: {knnError}
+              </p>
+            )}
           </div>
         );
 
@@ -325,7 +343,7 @@ export default function PredictPage() {
         {/* Content */}
         <div className="mb-24">{renderStepContent()}</div>
 
-        {/* Navigation Buttons */}
+        {/* Nav Buttons */}
         <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-50">
           <div className="flex gap-4 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-lg border">
             <Button
