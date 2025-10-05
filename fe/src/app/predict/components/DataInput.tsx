@@ -51,7 +51,7 @@ export function DataInput({
       </TabsList>
 
       <TabsContent value="single" className="space-y-4">
-        <Card>
+        <Card className="bg-background/40 backdrop-blur-sm border-primary/30">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FileText className="w-5 h-5" />
@@ -97,7 +97,7 @@ export function DataInput({
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="bg-background/40 backdrop-blur-sm border-primary/30">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <FileText className="w-5 h-5" />
@@ -132,7 +132,7 @@ export function DataInput({
       </TabsContent>
 
       <TabsContent value="batch" className="space-y-4">
-        <Card>
+        <Card className="bg-background/40 backdrop-blur-sm border-primary/30">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Database className="w-5 h-5" />

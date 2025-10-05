@@ -69,7 +69,7 @@ export function PlanetTypeClassification({
   }, {});
 
   return (
-    <Card>
+    <Card className="bg-background/40 backdrop-blur-sm border-primary/30">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <BarChart3 className="w-5 h-5" />

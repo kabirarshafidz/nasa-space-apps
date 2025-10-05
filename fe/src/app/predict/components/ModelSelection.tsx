@@ -177,7 +177,7 @@ export function ModelSelection({
 
       <TabsContent value="pretrained" className="space-y-6">
         {isLoading ? (
-          <Card>
+          <Card className="bg-background/40 backdrop-blur-sm border-primary/30">
             <CardContent>
               <LoadingState />
             </CardContent>
@@ -186,7 +186,7 @@ export function ModelSelection({
           <>
             {/* User Models Section */}
             {userModels.length > 0 && (
-              <Card>
+              <Card className="bg-background/40 backdrop-blur-sm border-primary/30">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-lg">
                     <User className="w-5 h-5" />
@@ -203,7 +203,7 @@ export function ModelSelection({
             )}
 
             {/* Default Models Section */}
-            <Card>
+            <Card className="bg-background/40 backdrop-blur-sm border-primary/30">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Sparkles className="w-5 h-5" />
@@ -224,7 +224,7 @@ export function ModelSelection({
 
             {/* Empty state when no models at all */}
             {userModels.length === 0 && defaultModels.length === 0 && (
-              <Card>
+              <Card className="bg-background/40 backdrop-blur-sm border-primary/30">
                 <CardContent>
                   <EmptyState message="No models found. Train a model first or upload one." />
                 </CardContent>
@@ -235,7 +235,7 @@ export function ModelSelection({
       </TabsContent>
 
       <TabsContent value="upload" className="space-y-4">
-        <Card>
+        <Card className="bg-background/40 backdrop-blur-sm border-primary/30">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Upload className="w-5 h-5" />

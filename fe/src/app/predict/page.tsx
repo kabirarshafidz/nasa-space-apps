@@ -447,7 +447,7 @@ export default function PredictPage() {
           <div className="space-y-6">
             {/* 1) Prediction Results */}
             {predictionResults && (
-              <Card>
+              <Card className="bg-background/40 backdrop-blur-sm border-primary/30">
                 <CardHeader>
                   <CardTitle>Prediction Results</CardTitle>
                   <CardDescription>
@@ -462,7 +462,7 @@ export default function PredictPage() {
 
             {/* 2) 3D Visualization - Only show if exoplanet detected */}
             {isExoplanetDetected && solarSystem && (
-              <Card>
+              <Card className="bg-background/40 backdrop-blur-sm border-primary/30">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <BarChart3 className="w-5 h-5" />
@@ -573,9 +573,9 @@ export default function PredictPage() {
                           );
                           const isInHZ =
                             orbitRadius >=
-                              solarSystem.habitableZone.innerMeters &&
+                            solarSystem.habitableZone.innerMeters &&
                             orbitRadius <=
-                              solarSystem.habitableZone.outerMeters;
+                            solarSystem.habitableZone.outerMeters;
 
                           return (
                             <SelectItem key={idx} value={idx.toString()}>
@@ -643,7 +643,7 @@ export default function PredictPage() {
                         );
                         const isInHZ =
                           orbitRadius >=
-                            solarSystem.habitableZone.innerMeters &&
+                          solarSystem.habitableZone.innerMeters &&
                           orbitRadius <= solarSystem.habitableZone.outerMeters;
 
                         return isInHZ ? (
@@ -724,10 +724,8 @@ export default function PredictPage() {
                         )}
                       {predictionType === "single" &&
                         solarSystem.planets.length > 1 &&
-                        `This system (${
-                          solarSystem.hostStar
-                        }) already exists in the TESS catalog with ${
-                          solarSystem.planets.length - 1
+                        `This system (${solarSystem.hostStar
+                        }) already exists in the TESS catalog with ${solarSystem.planets.length - 1
                         } known planet(s). Your detected exoplanet has been added to the visualization.`}
                       {predictionType === "single" &&
                         solarSystem.planets.length === 1 &&
@@ -740,7 +738,7 @@ export default function PredictPage() {
 
             {/* Show message if no exoplanets detected */}
             {predictionResults && !isExoplanetDetected && (
-              <Card>
+              <Card className="bg-background/40 backdrop-blur-sm border-primary/30">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <BarChart3 className="w-5 h-5" />
@@ -833,46 +831,50 @@ export default function PredictPage() {
         <div className="mb-24">{renderStepContent()}</div>
 
         {/* Nav Buttons */}
-        <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-50">
-          <div className="flex gap-4 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-lg border">
-            <Button
-              variant="outline"
-              onClick={handleBack}
-              disabled={currentStep === 1}
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Back
-            </Button>
-            <Button
-              onClick={handleNext}
-              disabled={
-                isLoading ||
-                knnLoading ||
-                (currentStep === 2 &&
-                  predictionType === "single" &&
-                  (Object.values(singleFeatures).some((v) => !v) ||
-                    !metadata.toi ||
-                    !metadata.toipfx)) ||
-                (currentStep === 2 &&
-                  predictionType === "batch" &&
-                  !uploadedFile) ||
-                currentStep === 3
-              }
-            >
-              {isLoading || knnLoading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                  Processing...
-                </>
-              ) : currentStep === 3 ? (
-                "Finished"
-              ) : (
-                <>
-                  {currentStep === 2 ? "Predict" : "Next"}
-                  <ArrowRight className="w-4 h-4 ml-2" />
-                </>
-              )}
-            </Button>
+        <div className="fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-md border-t border-primary/20 shadow-lg">
+          <div className="w-full max-w-7xl mx-auto py-4 px-4">
+            <div className="flex justify-between gap-4">
+              <Button
+                variant="outline"
+                onClick={handleBack}
+                disabled={currentStep === 1}
+                className="border-primary/30 bg-primary/5 hover:bg-primary/20 text-primary-foreground"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back
+              </Button>
+              <Button
+                onClick={handleNext}
+                disabled={
+                  isLoading ||
+                  knnLoading ||
+                  (currentStep === 2 &&
+                    predictionType === "single" &&
+                    (Object.values(singleFeatures).some((v) => !v) ||
+                      !metadata.toi ||
+                      !metadata.toipfx)) ||
+                  (currentStep === 2 &&
+                    predictionType === "batch" &&
+                    !uploadedFile) ||
+                  currentStep === 3
+                }
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                {isLoading || knnLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                    Processing...
+                  </>
+                ) : currentStep === 3 ? (
+                  "Finished"
+                ) : (
+                  <>
+                    {currentStep === 2 ? "Predict" : "Next"}
+                    <ArrowRight className="w-4 h-4 ml-2" />
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       </div>

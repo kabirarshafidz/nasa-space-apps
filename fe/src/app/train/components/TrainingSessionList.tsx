@@ -105,7 +105,7 @@ export function TrainingSessionList({
 
     return (
         <>
-            <Card className="mb-6">
+            <Card className="mb-6 bg-background/40 backdrop-blur-sm border-primary/30">
                 <CardHeader>
                     <div className="flex items-center justify-between">
                         <div>
@@ -146,57 +146,57 @@ export function TrainingSessionList({
                             {sessions.map((session) => {
                                 const isSelected = selectedSessionId === session.id;
                                 return (
-                                <div
-                                    key={session.id}
-                                    className={`flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors ${
-                                        isSelected ? "border-primary bg-primary/5" : ""
-                                    }`}
-                                >
-                                    <div className="flex-1">
-                                        <div className="font-medium">
-                                            Session {session.id.slice(0, 8)}...
-                                        </div>
-                                        <div className="text-sm text-muted-foreground">
-                                            Created: {formatDate(session.createdAt)}
-                                        </div>
-                                        {session.csvUrl && (
-                                            <div className="text-xs text-muted-foreground mt-1">
-                                                Dataset uploaded
+                                    <div
+                                        key={session.id}
+                                        className={`flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 transition-colors ${isSelected ? "border-primary bg-primary/5" : ""
+                                            }`}
+                                    >
+                                        <div className="flex-1">
+                                            <div className="font-medium">
+                                                Session {session.id.slice(0, 8)}...
                                             </div>
-                                        )}
-                                    </div>
-                                    <div className="flex gap-2">
-                                        {isSelected ? (
-                                            <Button
-                                                size="sm"
-                                                onClick={() => onStartTraining(session.id, !!session.csvUrl)}
-                                            >
-                                                {session.csvUrl ? "Continue Training" : "Start Training"}
-                                            </Button>
-                                        ) : (
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => onSessionSelect(session.id)}
-                                            >
-                                                Select
-                                            </Button>
-                                        )}
-                                        <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => handleDeleteClick(session.id)}
-                                            disabled={deletingId === session.id}
-                                        >
-                                            {deletingId === session.id ? (
-                                                <Loader2 className="h-4 w-4 animate-spin" />
-                                            ) : (
-                                                <Trash2 className="h-4 w-4 text-destructive" />
+                                            <div className="text-sm text-muted-foreground">
+                                                Created: {formatDate(session.createdAt)}
+                                            </div>
+                                            {session.csvUrl && (
+                                                <div className="text-xs text-muted-foreground mt-1">
+                                                    Dataset uploaded
+                                                </div>
                                             )}
-                                        </Button>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            {isSelected ? (
+                                                <Button
+                                                    size="sm"
+                                                    onClick={() => onStartTraining(session.id, !!session.csvUrl)}
+                                                >
+                                                    {session.csvUrl ? "Continue Training" : "Start Training"}
+                                                </Button>
+                                            ) : (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => onSessionSelect(session.id)}
+                                                >
+                                                    Select
+                                                </Button>
+                                            )}
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={() => handleDeleteClick(session.id)}
+                                                disabled={deletingId === session.id}
+                                            >
+                                                {deletingId === session.id ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <Trash2 className="h-4 w-4 text-destructive" />
+                                                )}
+                                            </Button>
+                                        </div>
                                     </div>
-                                </div>
-                            )})}
+                                )
+                            })}
                         </div>
                     )}
                 </CardContent>

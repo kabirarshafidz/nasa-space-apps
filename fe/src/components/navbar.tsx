@@ -11,7 +11,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import Link from "next/link";
-import { Image } from "next/image";
 
 // Navigation links array to be used in both desktop and mobile menus
 const navigationLinks = [
@@ -70,7 +69,7 @@ export default function NavbarNasa() {
                       <NavigationMenuLink
                         href={link.href}
                         className="py-1.5"
-                        active={link.active}
+                        active={false}
                       >
                         {link.label}
                       </NavigationMenuLink>
@@ -91,7 +90,7 @@ export default function NavbarNasa() {
                 {navigationLinks.map((link, index) => (
                   <NavigationMenuItem key={index}>
                     <NavigationMenuLink
-                      active={link.active}
+                      active={false}
                       href={link.href}
                       className="text-muted-foreground hover:text-primary py-1.5 font-medium"
                     >
