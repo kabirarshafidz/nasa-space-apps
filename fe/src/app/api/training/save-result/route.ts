@@ -110,15 +110,24 @@ export async function POST(req: NextRequest) {
         // Forward request to Python API
         const pythonApiUrl = `${process.env.NEXT_PUBLIC_API_ENDPOINT}/train/cv`;
 
-        // Create form data for Python API, adding csv_url if no file provided
+        // Create form data for Python API
         const pythonFormData = new FormData();
+
+        // Copy all fields EXCEPT 'file' from the original formData
         for (const [key, value] of formData.entries()) {
-            pythonFormData.append(key, value);
+            if (key !== 'file') {
+                pythonFormData.append(key, value);
+            }
         }
-        if (!csvFile && csvUrl) {
+
+        // Add file or csv_url depending on what's available
+        if (csvFile) {
+            console.log("Appending file to Python API FormData");
+            pythonFormData.append("file", csvFile);
+        } else if (csvUrl) {
             console.log("No file provided, appending csv_url:", csvUrl);
             pythonFormData.append("csv_url", csvUrl);
-        } else if (!csvFile && !csvUrl) {
+        } else {
             console.error("ERROR: No file and no csv_url available!");
             return NextResponse.json(
                 { success: false, error: "No CSV file or URL available for training" },
