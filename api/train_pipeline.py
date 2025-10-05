@@ -7,6 +7,7 @@ Includes chart generation and R2/S3 model storage
 import os
 import io
 import json
+import sys
 import tempfile
 import numpy as np
 import pandas as pd
@@ -184,12 +185,12 @@ def _pca_plot_base64(train_tbl: pd.DataFrame,
 
 # =============== R2/S3 Configuration ===============
 R2_CONFIG = {
-    "endpoint_url": "https://26966518ccbce9889c6f3ca4b63214d8.r2.cloudflarestorage.com",
-    "aws_access_key_id": "e4be7a0c006e11055ae1b3083995f6e6",
-    "aws_secret_access_key": "86c9e2d2eed11ed7f548f4dfee38e538872c832257d6c397e05f8a0c653df0bc",
-    "region_name": "auto",
-    "bucket_name": "nasa",
-    "public_url_base": "https://pub-000e8ab9810a4b32ae818ab4c4881da5.r2.dev",
+    "endpoint_url": os.getenv("R2_ENDPOINT_URL", "https://26966518ccbce9889c6f3ca4b63214d8.r2.cloudflarestorage.com"),
+    "aws_access_key_id": os.getenv("AWS_ACCESS_KEY_ID", "7ba8deb0be81b32abb7f1f64b53c4e7b"),
+    "aws_secret_access_key": os.getenv("AWS_SECRET_ACCESS_KEY", "9d25ce2cb2569eedcc1f0194750546a9aa725022bd6460e995ea9cb39fdf85b1"),
+    "region_name": os.getenv("AWS_REGION", "auto"),
+    "bucket_name": os.getenv("R2_BUCKET_NAME", "nasa"),
+    "public_url_base": os.getenv("R2_PUBLIC_URL_BASE", "https://pub-000e8ab9810a4b32ae818ab4c4881da5.r2.dev"),
 }
 
 
@@ -305,6 +306,30 @@ class LogTransformer(BaseEstimator, TransformerMixin):
             else:
                 X[c] = logged
         return X
+
+
+# =============== Fix for pickle deserialization ===============
+# When models are saved with LogTransformer and loaded via uvicorn,
+# the class needs to be available in both __main__ and train_pipeline modules
+if __name__ != "__main__":
+    # Running via uvicorn, make LogTransformer available as __main__.LogTransformer
+    if "__main__" not in sys.modules:
+        sys.modules["__main__"] = sys.modules[__name__]
+    else:
+        # Add our classes to __main__ module
+        sys.modules["__main__"].LogTransformer = LogTransformer
+
+
+def safe_joblib_load(file_path):
+    """
+    Safely load joblib models with custom classes.
+    Ensures LogTransformer is available under correct module path.
+    """
+    # Ensure our custom class is available in __main__ for unpickling
+    if hasattr(sys.modules.get("__main__"), "__dict__"):
+        sys.modules["__main__"].LogTransformer = LogTransformer
+    
+    return joblib.load(file_path)
 
 
 # =============== Data Cleaning ===============
