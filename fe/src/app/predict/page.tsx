@@ -32,6 +32,15 @@ import { ModelSelection } from "./components/ModelSelection";
 import { DataInput } from "./components/DataInput";
 import { ResultsTable } from "./components/ResultsTable";
 import { PlanetTypeClassification } from "./components/PlanetTypeClassification";
+import { ExoplanetVisualization } from "@/app/3d-visualization/components";
+import { Slider } from "@/components/ui/slider";
+
+// 3D Visualization utilities
+import {
+  createSolarSystemFromPrediction,
+  parseCSVData,
+  SolarSystem,
+} from "@/app/3d-visualization/lib";
 
 export default function PredictPage() {
   // Stepper state
@@ -69,6 +78,11 @@ export default function PredictPage() {
   });
 
   const [planetData, setPlanetData] = useState<any[]>([]);
+
+  // 3D Visualization state
+  const [solarSystem, setSolarSystem] = useState<SolarSystem | null>(null);
+  const [speedMultiplier, setSpeedMultiplier] = useState(1);
+  const [isExoplanetDetected, setIsExoplanetDetected] = useState(false);
 
   // Custom hooks
   const { isLoading, predictionResults, handlePredict } = usePrediction();
@@ -136,11 +150,78 @@ export default function PredictPage() {
         }
         setPlanetData(planetDataArray);
 
+        // Check if exoplanet is detected (for single prediction)
+        if (predictionType === "single" && result.results) {
+          const isDetected = result.results.predicted_labels?.[0] === 1;
+          setIsExoplanetDetected(isDetected);
+
+          // Create 3D visualization if exoplanet detected
+          if (isDetected) {
+            try {
+              // First, try to find existing system in TESS data
+              const tessData = await parseCSVData();
+              const existingSystem = tessData.find(
+                (sys) => sys.hostStar === metadata.toipfx
+              );
+
+              if (existingSystem) {
+                // Use existing system but add our predicted planet
+                const newPlanet = {
+                  toi: metadata.toi,
+                  toipfx: metadata.toipfx,
+                  pl_orbper: parseFloat(singleFeatures.pl_orbper),
+                  pl_rade: parseFloat(singleFeatures.pl_rade),
+                  pl_eqt: parseFloat(singleFeatures.pl_eqt),
+                  st_logg: parseFloat(singleFeatures.st_logg),
+                  st_rad: parseFloat(singleFeatures.st_rad),
+                  st_teff: parseFloat(singleFeatures.st_teff),
+                  ra: 0,
+                  dec: 0,
+                };
+
+                // Add new planet to existing system
+                const updatedSystem = {
+                  ...existingSystem,
+                  planets: [...existingSystem.planets, newPlanet],
+                };
+                setSolarSystem(updatedSystem);
+              } else {
+                // Create new solar system from prediction
+                const system = createSolarSystemFromPrediction({
+                  toi: metadata.toi,
+                  toipfx: metadata.toipfx,
+                  pl_orbper: parseFloat(singleFeatures.pl_orbper),
+                  pl_rade: parseFloat(singleFeatures.pl_rade),
+                  pl_eqt: parseFloat(singleFeatures.pl_eqt),
+                  st_logg: parseFloat(singleFeatures.st_logg),
+                  st_rad: parseFloat(singleFeatures.st_rad),
+                  st_teff: parseFloat(singleFeatures.st_teff),
+                  ra: 0,
+                  dec: 0,
+                });
+
+                if (system) {
+                  setSolarSystem(system);
+                } else {
+                  console.warn(
+                    "Could not create solar system from prediction data"
+                  );
+                }
+              }
+            } catch (error) {
+              console.error("Error creating solar system:", error);
+            }
+          } else {
+            // Not an exoplanet, clear any existing visualization
+            setSolarSystem(null);
+          }
+        }
+
         // Kick off PCA→KNN type classifications (only for predicted exoplanets)
         await fetchPlanetTypeClassifications(
           result.results?.metadata || [],
           result.csvText || [singleFeatures],
-          result.results?.predicted_labels || []  // Pass predicted labels to filter candidates
+          result.results?.predicted_labels || [] // Pass predicted labels to filter candidates
         );
 
         setCurrentStep(3);
@@ -240,59 +321,122 @@ export default function PredictPage() {
               </Card>
             )}
 
-            {/* 2) 3D Visualization (placeholder) */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5" />
-                  3D System Visualization
-                </CardTitle>
-                <CardDescription>
-                  Interactive 3D view of the detected exoplanet system
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-160 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950 dark:to-purple-950 rounded-lg flex items-center justify-center mb-4">
-                  <div className="text-center">
-                    <div className="w-20 h-20 bg-blue-500 rounded-full mx-auto mb-4 animate-pulse"></div>
-                    <p className="text-sm text-muted-foreground">
-                      3D Canvas Loading...
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Star + Planet + Orbit visualization
-                    </p>
-                  </div>
-                </div>
+            {/* 2) 3D Visualization - Only show if exoplanet detected */}
+            {isExoplanetDetected && solarSystem && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BarChart3 className="w-5 h-5" />
+                    3D System Visualization
+                  </CardTitle>
+                  <CardDescription>
+                    Interactive 3D view of the detected exoplanet system (TOI-
+                    {metadata.toipfx})
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ExoplanetVisualization
+                    system={solarSystem}
+                    speedMultiplier={speedMultiplier}
+                    height="500px"
+                  />
 
-                {/* Info below 3D viz (static placeholders) */}
-                <div className="grid grid-cols-3 gap-4 text-center">
-                  <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                    <div className="text-lg font-semibold text-blue-600 dark:text-blue-400">
-                      12.4
+                  {/* Speed Control */}
+                  <div className="mt-4 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">
+                        Animation Speed
+                      </span>
+                      <span className="text-sm font-medium">
+                        {speedMultiplier.toFixed(1)}x
+                      </span>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      Period (days)
+                    <Slider
+                      value={[speedMultiplier]}
+                      onValueChange={(value) => setSpeedMultiplier(value[0])}
+                      min={0.1}
+                      max={5}
+                      step={0.1}
+                    />
+                    <p className="text-xs text-muted-foreground text-center">
+                      (Base: ~3 days/sec)
+                    </p>
+                  </div>
+
+                  {/* System Info */}
+                  <div className="grid grid-cols-3 gap-4 mt-4">
+                    <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="text-lg font-semibold text-blue-600 dark:text-blue-400">
+                        {parseFloat(singleFeatures.pl_orbper).toFixed(1)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Period (days)
+                      </div>
+                    </div>
+                    <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="text-lg font-semibold text-green-600 dark:text-green-400">
+                        {parseFloat(singleFeatures.pl_rade).toFixed(2)}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Radius (R⊕)
+                      </div>
+                    </div>
+                    <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                      <div className="text-lg font-semibold text-purple-600 dark:text-purple-400">
+                        {solarSystem.starTemp.toFixed(0)} K
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Star Temp
+                      </div>
                     </div>
                   </div>
-                  <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                    <div className="text-lg font-semibold text-green-600 dark:text-green-400">
-                      1.2
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Radius (R⊕)
-                    </div>
+
+                  {/* Info about system source */}
+                  <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-md">
+                    <p className="text-xs text-blue-700 dark:text-blue-300">
+                      ℹ️{" "}
+                      {solarSystem.planets.length > 1
+                        ? `This system (${
+                            metadata.toipfx
+                          }) already exists in the TESS catalog with ${
+                            solarSystem.planets.length - 1
+                          } known planet(s). Your detected exoplanet has been added to the visualization.`
+                        : `This is a newly detected exoplanet system (${metadata.toipfx}) not previously in the TESS catalog.`}
+                    </p>
                   </div>
-                  <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                    <div className="text-lg font-semibold text-purple-600 dark:text-purple-400">
-                      87.3%
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Show message if prediction was negative */}
+            {predictionType === "single" &&
+              predictionResults &&
+              !isExoplanetDetected && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <BarChart3 className="w-5 h-5" />
+                      3D System Visualization
+                    </CardTitle>
+                    <CardDescription>
+                      No exoplanet detected for visualization
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-64 bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-300 dark:border-gray-700">
+                      <div className="text-center">
+                        <div className="text-4xl mb-4">🔭</div>
+                        <p className="text-muted-foreground font-medium">
+                          No Exoplanet Detected
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          The model did not detect an exoplanet in this data
+                        </p>
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      Confidence
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
+              )}
 
             {/* 3) Planet Type Classification (PCA→KNN) */}
             <PlanetTypeClassification

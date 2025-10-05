@@ -177,7 +177,7 @@ function toolFilterByCluster(
   });
 
   if (filtered.length === 0) {
-    return `No planets found for ${typeName ? `type="${typeName}"` : `cluster ${clusterNumber}`}. Available types: Rocky Planet, Gas Giant, Ice Giant (clusters 0, 1, 2).`;
+    return `No planets found for ${typeName ? `type="${typeName}"` : `cluster ${clusterNumber}`}. Available types: Rocky Planet, Gas Giant (clusters 0, 1).`;
   }
 
   const limited = filtered.slice(0, Math.min(limit, 50));
@@ -922,6 +922,9 @@ General Dataset Tools:
 - query_planets: Advanced query with multiple filters (type, confidence, radius, period)
 - search_by_field: Search for planets by any field name (e.g., sy_snum for number of stars, sy_pnum for number of planets in system)
 
+If the user asks about cluster 0 and cluster 1, cluster 0 means that the planet is a rocky planet and cluster 1 means that the planet is a gas giant.
+Cluster 0 represents large, highly irradiated, short-period planets with high equilibrium temperatures orbiting Sun-like stars—characteristics typical of gas giants or hot Jupiters. In contrast, Cluster 1 consists of smaller, cooler planets receiving lower stellar flux, orbiting cooler, smaller stars with longer periods—traits consistent with rocky or terrestrial planets.
+
 Rules:
 1. Use the available tools when users ask for specific data queries, statistics, or filtering.
 2. After calling a tool and receiving results, ALWAYS provide a natural language summary and explanation of the results.
@@ -953,7 +956,7 @@ ${contextSummary}
     });
 
     const result = streamText({
-      model: openai('gpt-4o-mini'),
+      model: openai('gpt-5-mini'),
       messages: modelMessages,
       onStepFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
         console.log('[Chat API] Step finished:', {
@@ -980,10 +983,10 @@ ${contextSummary}
           }
         }),
         filter_by_cluster: tool({
-          description: 'Filter planets by PCA cluster number (0, 1, 2) or type name (Rocky Planet, Gas Giant, Ice Giant). Returns planets with their PC1/PC2 coordinates.',
+          description: 'Filter planets by PCA cluster number (0, 1, 2) or type name (Rocky Planet, Gas Giant). Returns planets with their PC1/PC2 coordinates.',
           inputSchema: z.object({
-            cluster_number: z.number().optional().describe('Cluster number (0, 1, or 2)'),
-            type_name: z.string().optional().describe('Type name to search for (e.g., "Rocky Planet", "Gas Giant", "Ice Giant")'),
+            cluster_number: z.number().optional().describe('Cluster number (0, 1)'),
+            type_name: z.string().optional().describe('Type name to search for (e.g., "Rocky Planet", "Gas Giant",)'),
             limit: z.number().optional().default(25).describe('Maximum number of results (max 50)')
           }),
           execute: async ({ cluster_number, type_name, limit }) => {
