@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -36,15 +36,56 @@ import {
   Database,
   MessageSquare,
   BarChart3,
+  Search,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
 
 export default function PredictPage() {
   const [currentStep, setCurrentStep] = useState(1);
+  const [preTrainedModels, setPreTrainedModels] = useState<
+    {
+      name: string;
+      key: string;
+      size: number;
+      last_modified: string;
+      url: string;
+    }[]
+  >([]);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [predictionType, setPredictionType] = useState<"batch" | "single">(
     "single"
   );
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [predictionResults, setPredictionResults] = useState<{
+    predictions: number[];
+    predicted_labels: number[];
+    feature_count: number;
+    metadata?: Array<{ toi: string; toipfx: string }>;
+  } | null>(null);
+  const [singleFeatures, setSingleFeatures] = useState<Record<string, string>>({
+    pl_orbper: "",
+    pl_trandurh: "",
+    pl_trandep: "",
+    pl_rade: "",
+    pl_insol: "",
+    pl_eqt: "",
+    st_tmag: "",
+    st_dist: "",
+    st_teff: "",
+    st_logg: "",
+    st_rad: "",
+    pl_rade_relerr: "",
+  });
+  const [metadata, setMetadata] = useState<{ toi: string; toipfx: string }>({
+    toi: "",
+    toipfx: "",
+  });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const steps = [
     {
@@ -61,29 +102,38 @@ export default function PredictPage() {
     },
   ];
 
-  const preTrainedModels = [
-    {
-      id: "model1",
-      name: "TESS Exoplanet Classifier v1.0",
-      accuracy: "94.2%",
-      description: "Trained on 50,000+ TESS light curves",
-    },
-    {
-      id: "model2",
-      name: "Kepler Transit Detector v2.1",
-      accuracy: "91.8%",
-      description: "Specialized for Kepler mission data",
-    },
-    {
-      id: "model3",
-      name: "Multi-Mission Classifier v1.5",
-      accuracy: "89.5%",
-      description: "Works with TESS, Kepler, and K2 data",
-    },
+  const requiredFeatures = [
+    { name: "pl_orbper", label: "Orbital Period (days)" },
+    { name: "pl_trandurh", label: "Transit Duration (hours)" },
+    { name: "pl_trandep", label: "Transit Depth (ppm)" },
+    { name: "pl_rade", label: "Planet Radius (Earth radii)" },
+    { name: "pl_insol", label: "Insolation Flux (Earth flux)" },
+    { name: "pl_eqt", label: "Equilibrium Temperature (K)" },
+    { name: "st_tmag", label: "TESS Magnitude (mag)" },
+    { name: "st_dist", label: "Distance to Star (pc)" },
+    { name: "st_teff", label: "Stellar Temperature (K)" },
+    { name: "st_logg", label: "Stellar Surface Gravity (log g)" },
+    { name: "st_rad", label: "Stellar Radius (Solar radii)" },
+    { name: "pl_rade_relerr", label: "Relative Radius Error (log scale)" },
   ];
 
-  const handleNext = () => {
-    if (currentStep < 3) {
+  const getPreTrainedModels = async () => {
+    const preTrainedModels = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/api/models`
+    );
+    const data = await preTrainedModels.json();
+    setPreTrainedModels(data.models);
+  };
+
+  useEffect(() => {
+    getPreTrainedModels();
+  }, []);
+
+  const handleNext = async () => {
+    if (currentStep === 2) {
+      // Make prediction when moving from step 2 to step 3
+      await handlePredict();
+    } else if (currentStep < 3) {
       setCurrentStep(currentStep + 1);
     }
   };
@@ -91,6 +141,140 @@ export default function PredictPage() {
   const handleBack = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1);
+    }
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setUploadedFile(e.target.files[0]);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const files = e.dataTransfer.files;
+    if (files && files[0] && files[0].name.endsWith(".csv")) {
+      setUploadedFile(files[0]);
+    } else {
+      alert("Please upload a CSV file");
+    }
+  };
+
+  const handleFeatureChange = (featureName: string, value: string) => {
+    setSingleFeatures((prev) => ({
+      ...prev,
+      [featureName]: value,
+    }));
+  };
+
+  const handlePredict = async () => {
+    if (!selectedModel) {
+      alert("Please select a model first");
+      return;
+    }
+
+    // Validate metadata fields
+    if (predictionType === "single") {
+      if (!metadata.toi || !metadata.toipfx) {
+        alert("Please enter both TOI and TOIPFX values");
+        return;
+      }
+    }
+
+    setIsLoading(true);
+
+    try {
+      const formData = new FormData();
+      formData.append(
+        "model_name",
+        selectedModel
+          .replace("models/", "")
+          .replace(".bks", "")
+          .replace(".pkl", "")
+          .replace(".joblib", "")
+          .replace("default/", "")
+      );
+
+      let metadataArray: Array<{ toi: string; toipfx: string }> = [];
+
+      if (predictionType === "batch" && uploadedFile) {
+        // Read CSV to extract metadata before sending
+        const text = await uploadedFile.text();
+        const lines = text.split("\n");
+        const headers = lines[0].split(",").map((h) => h.trim());
+
+        const toiIdx = headers.indexOf("toi");
+        const toipfxIdx = headers.indexOf("toipfx");
+
+        if (toiIdx === -1 || toipfxIdx === -1) {
+          alert("CSV file must contain 'toi' and 'toipfx' columns");
+          setIsLoading(false);
+          return;
+        }
+
+        // Extract metadata from each row
+        for (let i = 1; i < lines.length; i++) {
+          if (lines[i].trim()) {
+            const values = lines[i].split(",");
+            metadataArray.push({
+              toi: values[toiIdx]?.trim() || "",
+              toipfx: values[toipfxIdx]?.trim() || "",
+            });
+          }
+        }
+
+        // Batch prediction with file upload
+        formData.append("file", uploadedFile);
+      } else if (predictionType === "single") {
+        // Single prediction with JSON features
+        const featuresArray = [singleFeatures];
+        formData.append("features_json", JSON.stringify(featuresArray));
+
+        // Store single metadata
+        metadataArray = [metadata];
+      } else {
+        alert("Please upload a file or enter feature values");
+        setIsLoading(false);
+        return;
+      }
+
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_ENDPOINT}/predict`,
+        {
+          method: "POST",
+          body: formData,
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || "Prediction failed");
+      }
+
+      const data = await response.json();
+
+      // Add metadata to results
+      setPredictionResults({
+        ...data,
+        metadata: metadataArray,
+      });
+      setCurrentStep(3);
+    } catch (error) {
+      console.error("Prediction error:", error);
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Failed to make prediction. Please try again."
+      );
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -130,14 +314,10 @@ export default function PredictPage() {
                         </SelectTrigger>
                         <SelectContent>
                           {preTrainedModels.map((model) => (
-                            <SelectItem key={model.id} value={model.id}>
+                            <SelectItem key={model.key} value={model.key}>
                               <div className="flex flex-col">
                                 <span className="font-medium">
                                   {model.name}
-                                </span>
-                                <span className="text-sm text-muted-foreground">
-                                  {model.description} • Accuracy:{" "}
-                                  {model.accuracy}
                                 </span>
                               </div>
                             </SelectItem>
@@ -177,7 +357,13 @@ export default function PredictPage() {
 
       case 2:
         return (
-          <Tabs defaultValue="single" className="w-full">
+          <Tabs
+            defaultValue="single"
+            className="w-full"
+            onValueChange={(val) =>
+              setPredictionType(val as "batch" | "single")
+            }
+          >
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="single">Single Prediction</TabsTrigger>
               <TabsTrigger value="batch">Batch Prediction</TabsTrigger>
@@ -188,60 +374,80 @@ export default function PredictPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <FileText className="w-5 h-5" />
-                    Single Prediction Input
+                    Candidate Information
                   </CardTitle>
                   <CardDescription>
-                    Enter feature values manually for prediction
+                    Enter TOI identification information
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="period">Period (days)</Label>
-                      <Input id="period" type="number" placeholder="12.4" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="duration">Duration (hours)</Label>
-                      <Input id="duration" type="number" placeholder="2.1" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="depth">Depth (ppm)</Label>
-                      <Input id="depth" type="number" placeholder="1500" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="snr">Signal-to-Noise Ratio</Label>
-                      <Input id="snr" type="number" placeholder="8.5" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="impact">Impact Parameter</Label>
-                      <Input id="impact" type="number" placeholder="0.3" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="radius">
-                        Planet Radius (Earth radii)
-                      </Label>
-                      <Input id="radius" type="number" placeholder="1.2" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="temperature">
-                        Effective Temperature (K)
+                      <Label htmlFor="toi" className="text-base font-semibold">
+                        TOI <span className="text-red-500">*</span>
                       </Label>
                       <Input
-                        id="temperature"
-                        type="number"
-                        placeholder="5800"
+                        id="toi"
+                        type="text"
+                        placeholder="e.g., 1234"
+                        value={metadata.toi}
+                        onChange={(e) =>
+                          setMetadata({ ...metadata, toi: e.target.value })
+                        }
+                        className="border-2"
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="stellar_radius">
-                        Stellar Radius (Solar radii)
+                      <Label
+                        htmlFor="toipfx"
+                        className="text-base font-semibold"
+                      >
+                        TOIPFX <span className="text-red-500">*</span>
                       </Label>
                       <Input
-                        id="stellar_radius"
-                        type="number"
-                        placeholder="1.0"
+                        id="toipfx"
+                        type="text"
+                        placeholder="e.g., 01"
+                        value={metadata.toipfx}
+                        onChange={(e) =>
+                          setMetadata({ ...metadata, toipfx: e.target.value })
+                        }
+                        className="border-2"
                       />
                     </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="w-5 h-5" />
+                    Feature Values
+                  </CardTitle>
+                  <CardDescription>
+                    Enter all 12 required features for prediction
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-4">
+                    {requiredFeatures.map((feature) => (
+                      <div className="space-y-2" key={feature.name}>
+                        <Label htmlFor={feature.name}>
+                          {feature.name} [{feature.label}]
+                        </Label>
+                        <Input
+                          id={feature.name}
+                          type="number"
+                          step="any"
+                          placeholder="e.g., 12.4"
+                          value={singleFeatures[feature.name]}
+                          onChange={(e) =>
+                            handleFeatureChange(feature.name, e.target.value)
+                          }
+                        />
+                      </div>
+                    ))}
                   </div>
                 </CardContent>
               </Card>
@@ -255,16 +461,83 @@ export default function PredictPage() {
                     Batch Data Upload
                   </CardTitle>
                   <CardDescription>
-                    Upload multiple files or a dataset for batch processing
+                    Upload a CSV file with exoplanet data for batch predictions.
+                    File must include: <strong>toi</strong>,{" "}
+                    <strong>toipfx</strong>, and all 12 feature columns.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center">
-                    <Database className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-                    <p className="text-gray-600 dark:text-gray-400 mb-4">
-                      Upload multiple CSV files or a ZIP archive
-                    </p>
-                    <Button variant="outline">Choose Files</Button>
+                  <div className="space-y-4">
+                    <div
+                      className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center hover:border-blue-400 dark:hover:border-blue-500 transition-colors cursor-pointer"
+                      onClick={() =>
+                        document.getElementById("file-upload")?.click()
+                      }
+                      onDragOver={handleDragOver}
+                      onDrop={handleDrop}
+                    >
+                      <Upload className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                      <p className="text-gray-600 dark:text-gray-400 mb-4">
+                        {uploadedFile
+                          ? `Selected: ${uploadedFile.name}`
+                          : "Click to upload or drag and drop a CSV file"}
+                      </p>
+                      <Button
+                        variant="outline"
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          document.getElementById("file-upload")?.click();
+                        }}
+                      >
+                        <Upload className="w-4 h-4 mr-2" />
+                        Choose CSV File
+                      </Button>
+                      <input
+                        id="file-upload"
+                        type="file"
+                        accept=".csv"
+                        className="hidden"
+                        onChange={handleFileUpload}
+                      />
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-4">
+                        CSV file with 12 required features
+                      </p>
+                    </div>
+                    {uploadedFile && (
+                      <div className="p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                              <strong>File:</strong> {uploadedFile.name}
+                            </p>
+                            <p className="text-xs text-blue-600 dark:text-blue-300 mt-1">
+                              Size: {(uploadedFile.size / 1024).toFixed(2)} KB
+                            </p>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setUploadedFile(null)}
+                            className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200"
+                          >
+                            <svg
+                              className="w-4 h-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M6 18L18 6M6 6l12 12"
+                              />
+                            </svg>
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -273,6 +546,26 @@ export default function PredictPage() {
         );
 
       case 3:
+        if (!predictionResults) {
+          return (
+            <Card>
+              <CardContent className="p-12 text-center">
+                <p className="text-muted-foreground">
+                  No prediction results available
+                </p>
+              </CardContent>
+            </Card>
+          );
+        }
+
+        const avgConfidence =
+          predictionResults.predictions.reduce((a, b) => a + b, 0) /
+          predictionResults.predictions.length;
+        const positiveCount = predictionResults.predicted_labels.filter(
+          (l) => l === 1
+        ).length;
+        const negativeCount = predictionResults.feature_count - positiveCount;
+
         return (
           <div className="space-y-8">
             {/* 1. Results Summary */}
@@ -287,14 +580,288 @@ export default function PredictPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="p-4 bg-green-50 dark:bg-green-950 rounded-lg">
-                  <h4 className="font-semibold text-green-800 dark:text-green-200 mb-2">
-                    Exoplanet Detected! 🪐
-                  </h4>
-                  <p className="text-green-700 dark:text-green-300 text-sm">
-                    Confidence: 87.3% | Period: 12.4 days | Radius: 1.2 Earth
-                    radii
-                  </p>
+                <div className="space-y-4">
+                  <div
+                    className={`p-4 rounded-lg ${
+                      positiveCount > 0
+                        ? "bg-green-50 dark:bg-green-950"
+                        : "bg-blue-50 dark:bg-blue-950"
+                    }`}
+                  >
+                    <h4
+                      className={`font-semibold mb-2 ${
+                        positiveCount > 0
+                          ? "text-green-800 dark:text-green-200"
+                          : "text-blue-800 dark:text-blue-200"
+                      }`}
+                    >
+                      {positiveCount > 0
+                        ? `${positiveCount} Exoplanet${
+                            positiveCount > 1 ? "s" : ""
+                          } Detected!`
+                        : "No Exoplanets Detected"}
+                    </h4>
+                    <p
+                      className={`text-sm ${
+                        positiveCount > 0
+                          ? "text-green-700 dark:text-green-300"
+                          : "text-blue-700 dark:text-blue-300"
+                      }`}
+                    >
+                      Average Confidence: {(avgConfidence * 100).toFixed(1)}% |
+                      Total Predictions: {predictionResults.feature_count} |
+                      Positive: {positiveCount} | Negative: {negativeCount}
+                    </p>
+                  </div>
+
+                  {/* Search Bar */}
+                  <div className="mb-4">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                      <Input
+                        type="text"
+                        placeholder="Search by TOI or Candidate ID..."
+                        value={searchQuery}
+                        onChange={(e) => {
+                          setSearchQuery(e.target.value);
+                          setCurrentPage(1);
+                        }}
+                        className="pl-10 pr-4 py-2"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Results Table */}
+                  <div className="border rounded-lg overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-gray-100 dark:bg-gray-800">
+                          <tr>
+                            <th className="px-4 py-3 text-left font-semibold">
+                              TOI
+                            </th>
+                            <th className="px-4 py-3 text-left font-semibold">
+                              TOIPFX
+                            </th>
+                            <th className="px-4 py-3 text-right font-semibold">
+                              Probability
+                            </th>
+                            <th className="px-4 py-3 text-center font-semibold">
+                              Prediction
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(() => {
+                            const filteredResults =
+                              predictionResults.predictions
+                                .map((prob, idx) => ({
+                                  toi:
+                                    predictionResults.metadata?.[idx]?.toi ||
+                                    `TOI-${idx + 1}`,
+                                  toipfx:
+                                    predictionResults.metadata?.[idx]?.toipfx ||
+                                    "N/A",
+                                  prob,
+                                  label:
+                                    predictionResults.predicted_labels[idx],
+                                  originalIdx: idx,
+                                }))
+                                .filter(
+                                  (item) =>
+                                    item.toi
+                                      .toLowerCase()
+                                      .includes(searchQuery.toLowerCase()) ||
+                                    item.toipfx
+                                      .toLowerCase()
+                                      .includes(searchQuery.toLowerCase())
+                                );
+
+                            const totalPages = Math.ceil(
+                              filteredResults.length / itemsPerPage
+                            );
+                            const startIdx = (currentPage - 1) * itemsPerPage;
+                            const endIdx = startIdx + itemsPerPage;
+                            const paginatedResults = filteredResults.slice(
+                              startIdx,
+                              endIdx
+                            );
+
+                            if (filteredResults.length === 0) {
+                              return (
+                                <tr>
+                                  <td
+                                    colSpan={4}
+                                    className="px-4 py-8 text-center text-gray-500 dark:text-gray-400"
+                                  >
+                                    No results found for "{searchQuery}"
+                                  </td>
+                                </tr>
+                              );
+                            }
+
+                            return paginatedResults.map((item) => (
+                              <tr
+                                key={item.originalIdx}
+                                className="border-t dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800/50"
+                              >
+                                <td className="px-4 py-3">
+                                  <span className="font-mono font-semibold text-purple-600 dark:text-purple-400">
+                                    {item.toi}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3">
+                                  <span className="font-mono text-gray-700 dark:text-gray-300">
+                                    {item.toipfx}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-right">
+                                  <div className="flex items-center justify-end gap-3">
+                                    <div className="flex-1 max-w-[120px] bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                      <div
+                                        className={`h-2 rounded-full transition-all ${
+                                          item.label === 1
+                                            ? "bg-gradient-to-r from-green-400 to-green-600"
+                                            : "bg-gradient-to-r from-gray-400 to-gray-500"
+                                        }`}
+                                        style={{ width: `${item.prob * 100}%` }}
+                                      ></div>
+                                    </div>
+                                    <span className="font-mono text-base font-semibold min-w-[60px]">
+                                      {(item.prob * 100).toFixed(1)}%
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  <div className="flex items-center justify-center">
+                                    {item.label === 1 ? (
+                                      <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-green-100 to-emerald-100 dark:from-green-900 dark:to-emerald-900 rounded-lg border border-green-200 dark:border-green-700">
+                                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                                        <span className="font-medium text-green-800 dark:text-green-200">
+                                          Exoplanet
+                                        </span>
+                                      </div>
+                                    ) : (
+                                      <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+                                        <div className="w-2 h-2 rounded-full bg-gray-400"></div>
+                                        <span className="font-medium text-gray-700 dark:text-gray-300">
+                                          Not Exoplanet
+                                        </span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            ));
+                          })()}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    {/* Pagination */}
+                    {(() => {
+                      const filteredCount =
+                        predictionResults.predictions.filter((_, idx) => {
+                          const toi =
+                            predictionResults.metadata?.[idx]?.toi ||
+                            `TOI-${idx + 1}`;
+                          const toipfx =
+                            predictionResults.metadata?.[idx]?.toipfx || "N/A";
+                          return (
+                            toi
+                              .toLowerCase()
+                              .includes(searchQuery.toLowerCase()) ||
+                            toipfx
+                              .toLowerCase()
+                              .includes(searchQuery.toLowerCase())
+                          );
+                        }).length;
+                      const totalPages = Math.ceil(
+                        filteredCount / itemsPerPage
+                      );
+
+                      if (totalPages <= 1) return null;
+
+                      return (
+                        <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-800 border-t dark:border-gray-700">
+                          <div className="text-sm text-gray-600 dark:text-gray-400">
+                            Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
+                            {Math.min(
+                              currentPage * itemsPerPage,
+                              filteredCount
+                            )}{" "}
+                            of {filteredCount} results
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setCurrentPage((p) => Math.max(1, p - 1))
+                              }
+                              disabled={currentPage === 1}
+                            >
+                              <ChevronLeft className="w-4 h-4" />
+                            </Button>
+                            <div className="flex items-center gap-1">
+                              {Array.from(
+                                { length: totalPages },
+                                (_, i) => i + 1
+                              ).map((page) => {
+                                if (
+                                  page === 1 ||
+                                  page === totalPages ||
+                                  (page >= currentPage - 1 &&
+                                    page <= currentPage + 1)
+                                ) {
+                                  return (
+                                    <Button
+                                      key={page}
+                                      variant={
+                                        page === currentPage
+                                          ? "default"
+                                          : "outline"
+                                      }
+                                      size="sm"
+                                      onClick={() => setCurrentPage(page)}
+                                      className="min-w-[32px]"
+                                    >
+                                      {page}
+                                    </Button>
+                                  );
+                                } else if (
+                                  page === currentPage - 2 ||
+                                  page === currentPage + 2
+                                ) {
+                                  return (
+                                    <span
+                                      key={page}
+                                      className="px-2 text-gray-400"
+                                    >
+                                      ...
+                                    </span>
+                                  );
+                                }
+                                return null;
+                              })}
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                setCurrentPage((p) =>
+                                  Math.min(totalPages, p + 1)
+                                )
+                              }
+                              disabled={currentPage === totalPages}
+                            >
+                              <ChevronRight className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -561,12 +1128,30 @@ export default function PredictPage() {
             <Button
               onClick={handleNext}
               disabled={
-                currentStep === 3 || (currentStep === 1 && !selectedModel)
+                currentStep === 3 ||
+                (currentStep === 1 && !selectedModel) ||
+                (currentStep === 2 &&
+                  predictionType === "batch" &&
+                  !uploadedFile) ||
+                isLoading
               }
               className="min-w-[100px]"
             >
-              {currentStep === 3 ? "Complete" : "Next"}
-              {currentStep < 3 && <ArrowRight className="w-4 h-4 ml-2" />}
+              {isLoading ? (
+                <>
+                  <span className="mr-2">Predicting...</span>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                </>
+              ) : currentStep === 3 ? (
+                "Complete"
+              ) : currentStep === 2 ? (
+                "Predict"
+              ) : (
+                "Next"
+              )}
+              {!isLoading && currentStep < 3 && (
+                <ArrowRight className="w-4 h-4 ml-2" />
+              )}
             </Button>
           </div>
         </div>

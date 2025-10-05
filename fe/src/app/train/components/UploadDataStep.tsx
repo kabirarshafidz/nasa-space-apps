@@ -59,6 +59,35 @@ export function UploadDataStep({
                 </p>
             </div>
 
+            {/* Required Columns Info */}
+            <div className="bg-primary/5 border border-primary/30 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-primary-foreground mb-2">
+                    Required CSV Columns
+                </h3>
+                <p className="text-xs text-primary-foreground/70 mb-3">
+                    Your CSV file must include these exact column names:
+                </p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    <code className="text-xs bg-background px-2 py-1 rounded border border-primary/20 text-primary-foreground">tfopwg_disp</code>
+                    <code className="text-xs bg-background px-2 py-1 rounded border border-primary/20 text-primary-foreground">pl_orbper</code>
+                    <code className="text-xs bg-background px-2 py-1 rounded border border-primary/20 text-primary-foreground">pl_trandurh</code>
+                    <code className="text-xs bg-background px-2 py-1 rounded border border-primary/20 text-primary-foreground">pl_trandep</code>
+                    <code className="text-xs bg-background px-2 py-1 rounded border border-primary/20 text-primary-foreground">pl_rade</code>
+                    <code className="text-xs bg-background px-2 py-1 rounded border border-primary/20 text-primary-foreground">pl_insol</code>
+                    <code className="text-xs bg-background px-2 py-1 rounded border border-primary/20 text-primary-foreground">pl_eqt</code>
+                    <code className="text-xs bg-background px-2 py-1 rounded border border-primary/20 text-primary-foreground">st_tmag</code>
+                    <code className="text-xs bg-background px-2 py-1 rounded border border-primary/20 text-primary-foreground">st_dist</code>
+                    <code className="text-xs bg-background px-2 py-1 rounded border border-primary/20 text-primary-foreground">st_teff</code>
+                    <code className="text-xs bg-background px-2 py-1 rounded border border-primary/20 text-primary-foreground">st_logg</code>
+                    <code className="text-xs bg-background px-2 py-1 rounded border border-primary/20 text-primary-foreground">st_rad</code>
+                    <code className="text-xs bg-background px-2 py-1 rounded border border-primary/20 text-primary-foreground">pl_radeerr1</code>
+                    <code className="text-xs bg-background px-2 py-1 rounded border border-primary/20 text-primary-foreground">label_planet</code>
+                </div>
+                <p className="text-xs text-primary-foreground/60 mt-3">
+                    <strong>Note:</strong> These are TESS/NASA Exoplanet Archive standard column names. Lines starting with # will be ignored.
+                </p>
+            </div>
+
             <div className="space-y-2">
                 <div
                     role="button"

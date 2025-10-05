@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
     Stepper,
     StepperIndicator,
@@ -12,27 +12,83 @@ import {
 import { Button } from "@/components/ui/button";
 import { CardContent } from "@/components/ui/card";
 import { StepCard } from "@/components/StepCard";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
 import { useFileUpload } from "@/hooks/use-file-upload";
 import {
     UploadDataStep,
     PreviewDataStep,
     ConfigureModelStep,
     TrainingResultsStep,
+    TrainingSessionList,
 } from "./components";
+import { TrainingHistory } from "./components/TrainingHistory";
+import { getTrainingSessions } from "./actions";
+
+interface TrainingSession {
+    id: string;
+    userId: string;
+    createdAt: Date;
+    updatedAt: Date | null;
+    csvUrl: string | null;
+}
 
 interface TrainingResult {
     model_name: string;
     model_type: string;
-    metrics: {
-        auc: number;
-        accuracy: number;
+    oof_metrics: {
+        roc_auc: number;
+        pr_auc: number;
         precision: number;
         recall: number;
         f1: number;
-        log_loss: number;
+        logloss: number;
     };
-    best_iteration?: number;
-    feature_importance?: Record<string, number>;
+    fold_metrics: Array<{
+        roc_auc: number;
+        pr_auc: number;
+        precision: number;
+        recall: number;
+        f1: number;
+        logloss: number;
+    }>;
+    confusion: {
+        threshold: number;
+        counts: {
+            TP: number;
+            TN: number;
+            FP: number;
+            FN: number;
+            P: number;
+            N: number;
+        };
+        rates: {
+            TPR: number;
+            TNR: number;
+            FPR: number;
+            FNR: number;
+            PPV: number;
+            NPV: number;
+            ACC: number;
+        };
+        matrix: number[][];
+    };
+    model_url: string;
+    charts: {
+        roc_curve?: string;
+        pr_curve?: string;
+        confusion_matrix?: string;
+        feature_importance?: string;
+        cv_metrics?: string;
+        correlation_heatmap?: string;
+    };
+    timestamp: string;
 }
 
 interface CsvData {
@@ -40,8 +96,43 @@ interface CsvData {
 }
 
 export default function TrainPage() {
+    // Session management
+    const [sessions, setSessions] = useState<TrainingSession[]>([]);
+    const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+    const [showTrainingSteps, setShowTrainingSteps] = useState(false);
+    const [isLoadingSessions, setIsLoadingSessions] = useState(true);
+    const [usingExistingCSV, setUsingExistingCSV] = useState(false);
+
     const [currentStep, setCurrentStep] = useState(1);
     const maxSize = 100 * 1024 * 1024; // 100MB
+
+    // Load sessions on mount
+    useEffect(() => {
+        loadSessions();
+    }, []);
+
+    const loadSessions = async () => {
+        setIsLoadingSessions(true);
+        const result = await getTrainingSessions();
+        if (result.success) {
+            setSessions(result.sessions);
+        }
+        setIsLoadingSessions(false);
+    };
+
+    const handleSessionSelect = (sessionId: string) => {
+        setSelectedSessionId(sessionId);
+        setShowTrainingSteps(false); // Keep on session list to show history
+        setCurrentStep(1);
+    };
+
+    const handleStartTraining = (sessionId: string, hasCSV: boolean) => {
+        setSelectedSessionId(sessionId);
+        setShowTrainingSteps(true);
+        setUsingExistingCSV(hasCSV);
+        // Skip to step 3 (configure) if CSV already uploaded, otherwise start at step 1 (upload)
+        setCurrentStep(hasCSV ? 3 : 1);
+    };
 
     // Step 1: File upload
     const [
@@ -73,16 +164,13 @@ export default function TrainPage() {
     // Step 3: Model configuration
     const [modelName, setModelName] = useState("");
     const [modelType, setModelType] = useState("xgboost");
-    const [testSize, setTestSize] = useState("0.2");
-    const [randomState, setRandomState] = useState("42");
-
-    // XGBoost params
-    const [xgbEta, setXgbEta] = useState("0.05");
-    const [xgbMaxDepth, setXgbMaxDepth] = useState("6");
-    const [xgbSubsample, setXgbSubsample] = useState("0.8");
-    const [xgbColsampleBytree, setXgbColsampleBytree] = useState("0.8");
-    const [xgbNumBoostRound, setXgbNumBoostRound] = useState("2000");
-    const [xgbEarlyStoppingRounds, setXgbEarlyStoppingRounds] = useState("50");
+    const [cvFolds, setCvFolds] = useState("5");
+    const [calibrationEnabled, setCalibrationEnabled] = useState(true);
+    const [calibrationMethod, setCalibrationMethod] = useState("isotonic");
+    const [imputerKind, setImputerKind] = useState("knn");
+    const [imputerK, setImputerK] = useState("5");
+    const [threshold, setThreshold] = useState("0.5");
+    const [modelParams, setModelParams] = useState("{}");
 
     // Step 4: Training & Results
     const [isTraining, setIsTraining] = useState(false);
@@ -91,12 +179,7 @@ export default function TrainPage() {
         null,
     );
     const [trainingError, setTrainingError] = useState<string | null>(null);
-    const [isRetrainDialogOpen, setIsRetrainDialogOpen] = useState(false);
-
-    // Retrain parameters (for dialog)
-    const [retrainModelName, setRetrainModelName] = useState("");
-    const [retrainModelType, setRetrainModelType] = useState("");
-    const [retrainTestSize, setRetrainTestSize] = useState("");
+    const [isFineTuneDialogOpen, setIsFineTuneDialogOpen] = useState(false);
 
     const steps = [
         {
@@ -199,14 +282,13 @@ export default function TrainPage() {
     };
 
     // Handle training
-    const handleTrain = async (params?: {
-        modelName?: string;
-        modelType?: string;
-        testSize?: string;
-    }) => {
-        const trainModelName = params?.modelName || modelName;
-        const trainModelType = params?.modelType || modelType;
-        const trainTestSize = params?.testSize || testSize;
+    const handleTrain = async () => {
+        if (!selectedSessionId) {
+            setTrainingError("No training session selected");
+            return;
+        }
+
+        const trainModelType = modelType;
 
         setIsTraining(true);
         setTrainingError(null);
@@ -229,26 +311,21 @@ export default function TrainPage() {
             if (file && file.file instanceof File) {
                 formData.append("file", file.file);
             }
-            formData.append("model_name", trainModelName);
-            formData.append("model_type", trainModelType);
-            formData.append("test_size", trainTestSize);
-            formData.append("random_state", randomState);
+            formData.append("model_name", trainModelType);
+            formData.append("model_params", modelParams);
+            formData.append("cv_folds", cvFolds);
+            formData.append("calibration_enabled", calibrationEnabled.toString());
+            formData.append("calibration_method", calibrationMethod);
+            formData.append("imputer_kind", imputerKind);
+            formData.append("imputer_k", imputerK);
+            formData.append("threshold", threshold);
+            formData.append("training_session_id", selectedSessionId);
+            formData.append("user_model_name", modelName);
 
-            // XGBoost params
-            formData.append("xgb_eta", xgbEta);
-            formData.append("xgb_max_depth", xgbMaxDepth);
-            formData.append("xgb_subsample", xgbSubsample);
-            formData.append("xgb_colsample_bytree", xgbColsampleBytree);
-            formData.append("xgb_num_boost_round", xgbNumBoostRound);
-            formData.append("xgb_early_stopping_rounds", xgbEarlyStoppingRounds);
-
-            const response = await fetch(
-                "http://10.16.146.135:8000/train",
-                {
-                    method: "POST",
-                    body: formData,
-                },
-            );
+            const response = await fetch("/api/training/save-result", {
+                method: "POST",
+                body: formData,
+            });
 
             clearInterval(progressInterval);
 
@@ -270,51 +347,79 @@ export default function TrainPage() {
         }
     };
 
-    // Handle retrain with dialog
-    const handleRetrainClick = () => {
-        setRetrainModelName(modelName);
-        setRetrainModelType(modelType);
-        setRetrainTestSize(testSize);
-        setIsRetrainDialogOpen(true);
+    // Handle fine-tune - open dialog to modify parameters
+    const handleFineTune = () => {
+        setIsFineTuneDialogOpen(true);
     };
 
-    const handleRetrainSubmit = async () => {
-        if (!retrainModelName.trim()) {
+    // Handle fine-tune submit
+    const handleFineTuneSubmit = async () => {
+        if (!modelName.trim()) {
             setTrainingError("Please enter a model name");
             return;
         }
-        setIsRetrainDialogOpen(false);
+        setIsFineTuneDialogOpen(false);
         setTrainingResult(null);
-        await handleTrain({
-            modelName: retrainModelName,
-            modelType: retrainModelType,
-            testSize: retrainTestSize,
-        });
+        setTrainingError(null);
+        await handleTrain();
     };
 
     const handleTrainAnother = () => {
+        setShowTrainingSteps(false);
+        setSelectedSessionId(null);
         setCurrentStep(1);
+        setUsingExistingCSV(false);
         setCsvData([]);
         setCsvHeaders([]);
         setTrainingResult(null);
         setTrainingError(null);
         setModelName("");
+        loadSessions();
     };
 
     return (
         <div className="flex flex-col h-[calc(100vh-4rem)]">
-            <div className="px-10 py-8   w-full flex-1 overflow-y-auto pb-32">
+            <div className="px-10 py-8 w-full flex-1 overflow-y-auto pb-32">
               <div className="max-w-7xl w-full mx-auto">
                 <div className="mb-8">
                     <h1 className="text-3xl font-bold text-primary-foreground mb-2">
                         Train New Model
                     </h1>
                     <p className="text-primary-foreground/70">
-                        Follow the steps to upload your data and train a new model
+                        {showTrainingSteps
+                            ? "Follow the steps to upload your data and train a new model"
+                            : "Manage your training sessions or create a new one to get started"}
                     </p>
                 </div>
 
+                {/* Training Session List */}
+                {!showTrainingSteps && !isLoadingSessions && (
+                    <>
+                        <TrainingSessionList
+                            sessions={sessions}
+                            selectedSessionId={selectedSessionId}
+                            onSessionSelect={handleSessionSelect}
+                            onStartTraining={handleStartTraining}
+                            onSessionsChange={loadSessions}
+                        />
+
+                        {/* Show training history for selected session */}
+                        {selectedSessionId && (
+                            <div className="mt-6">
+                                <TrainingHistory sessionId={selectedSessionId} />
+                            </div>
+                        )}
+                    </>
+                )}
+
+                {isLoadingSessions && !showTrainingSteps && (
+                    <div className="text-center py-12">
+                        <p className="text-muted-foreground">Loading sessions...</p>
+                    </div>
+                )}
+
                 {/* Stepper */}
+                {showTrainingSteps && (
                 <div className="mb-8">
                     <Stepper value={currentStep}>
                         {steps.map(({ step, title }) => (
@@ -336,8 +441,10 @@ export default function TrainPage() {
                         ))}
                     </Stepper>
                 </div>
+                )}
 
                 {/* Step Content */}
+                {showTrainingSteps && (
                 <StepCard>
                     <CardContent className="pt-6">
                     {/* Step 1: Upload Data */}
@@ -371,21 +478,36 @@ export default function TrainPage() {
 
                     {/* Step 3: Configure Model */}
                     {currentStep === 3 && (
-                        <ConfigureModelStep
+                        <>
+                            {usingExistingCSV && (
+                                <div className="mb-4 p-4 bg-primary/10 border border-primary/30 rounded-lg">
+                                    <p className="text-sm text-primary-foreground">
+                                        ℹ️ Using existing dataset from this session. The CSV will be automatically included in training.
+                                    </p>
+                                </div>
+                            )}
+                            <ConfigureModelStep
                             modelName={modelName}
                             setModelName={setModelName}
                             modelType={modelType}
                             setModelType={setModelType}
-                            testSize={testSize}
-                            setTestSize={setTestSize}
-                            xgbEta={xgbEta}
-                            setXgbEta={setXgbEta}
-                            xgbMaxDepth={xgbMaxDepth}
-                            setXgbMaxDepth={setXgbMaxDepth}
-                            xgbNumBoostRound={xgbNumBoostRound}
-                            setXgbNumBoostRound={setXgbNumBoostRound}
+                            cvFolds={cvFolds}
+                            setCvFolds={setCvFolds}
+                            calibrationEnabled={calibrationEnabled}
+                            setCalibrationEnabled={setCalibrationEnabled}
+                            calibrationMethod={calibrationMethod}
+                            setCalibrationMethod={setCalibrationMethod}
+                            imputerKind={imputerKind}
+                            setImputerKind={setImputerKind}
+                            imputerK={imputerK}
+                            setImputerK={setImputerK}
+                            threshold={threshold}
+                            setThreshold={setThreshold}
+                            modelParams={modelParams}
+                            setModelParams={setModelParams}
                             trainingError={trainingError}
                         />
+                        </>
                     )}
 
                     {/* Step 4: Training & Results */}
@@ -396,36 +518,45 @@ export default function TrainPage() {
                             trainingResult={trainingResult}
                             trainingError={trainingError}
                             modelName={modelName}
-                            isRetrainDialogOpen={isRetrainDialogOpen}
-                            setIsRetrainDialogOpen={setIsRetrainDialogOpen}
-                            handleRetrainClick={handleRetrainClick}
-                            handleRetrainSubmit={handleRetrainSubmit}
-                            handleTrainAnother={handleTrainAnother}
-                            retrainModelName={retrainModelName}
-                            setRetrainModelName={setRetrainModelName}
-                            retrainModelType={retrainModelType}
-                            setRetrainModelType={setRetrainModelType}
-                            retrainTestSize={retrainTestSize}
-                            setRetrainTestSize={setRetrainTestSize}
+                            sessionId={selectedSessionId}
                         />
                     )}
 
                     </CardContent>
                 </StepCard>
+                )}
             </div>
 
             {/* Navigation Buttons - Fixed at Bottom */}
+            {showTrainingSteps && (
             <div className="fixed bottom-0 left-0 right-0 bg-background border-t border-primary/20 shadow-lg">
                 <div className="w-full max-w-7xl mx-auto py-4">
                     <div className="flex justify-between">
-                        <Button
-                            variant="outline"
-                            onClick={handlePrevious}
-                            disabled={currentStep === 1 || isTraining}
-                            className="border-primary/30 bg-primary/5 hover:bg-primary/20 text-primary-foreground"
-                        >
-                            Previous
-                        </Button>
+                        <div className="flex gap-2">
+                            {currentStep === 1 && (
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        setShowTrainingSteps(false);
+                                        setSelectedSessionId(null);
+                                    }}
+                                    disabled={isTraining}
+                                    className="border-primary/30 bg-primary/5 hover:bg-primary/20 text-primary-foreground"
+                                >
+                                    ← Back to Sessions
+                                </Button>
+                            )}
+                            {currentStep > 1 && (
+                                <Button
+                                    variant="outline"
+                                    onClick={handlePrevious}
+                                    disabled={isTraining}
+                                    className="border-primary/30 bg-primary/5 hover:bg-primary/20 text-primary-foreground"
+                                >
+                                    Previous
+                                </Button>
+                            )}
+                        </div>
 
                         {currentStep < 4 && (
                             <Button
@@ -436,9 +567,84 @@ export default function TrainPage() {
                                 {currentStep === 3 ? "Start Training" : "Next"}
                             </Button>
                         )}
+
+                        {currentStep === 4 && !isTraining && trainingResult && (
+                            <>
+                                <Button
+                                    variant="outline"
+                                    onClick={handleFineTune}
+                                    className="border-primary/30 bg-primary/5 hover:bg-primary/20 text-primary-foreground"
+                                >
+                                    Fine Tune
+                                </Button>
+                                <Button
+                                    onClick={handleTrainAnother}
+                                    className="bg-primary text-primary-foreground hover:bg-primary/90"
+                                >
+                                    Train Another Model
+                                </Button>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>
+        )}
+
+            {/* Fine-Tune Dialog */}
+            <Dialog
+                open={isFineTuneDialogOpen}
+                onOpenChange={setIsFineTuneDialogOpen}
+            >
+                <DialogContent className="sm:max-w-5xl bg-background border-primary/30 max-w-4xl max-h-[90vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle className="text-primary-foreground">
+                            Fine-Tune Model Parameters
+                        </DialogTitle>
+                        <DialogDescription className="text-primary-foreground/70">
+                            Adjust all training parameters and retrain the model
+                            with the same dataset.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <ConfigureModelStep
+                            modelName={modelName}
+                            setModelName={setModelName}
+                            modelType={modelType}
+                            setModelType={setModelType}
+                            cvFolds={cvFolds}
+                            setCvFolds={setCvFolds}
+                            calibrationEnabled={calibrationEnabled}
+                            setCalibrationEnabled={setCalibrationEnabled}
+                            calibrationMethod={calibrationMethod}
+                            setCalibrationMethod={setCalibrationMethod}
+                            imputerKind={imputerKind}
+                            setImputerKind={setImputerKind}
+                            imputerK={imputerK}
+                            setImputerK={setImputerK}
+                            threshold={threshold}
+                            setThreshold={setThreshold}
+                            modelParams={modelParams}
+                            setModelParams={setModelParams}
+                            trainingError={trainingError}
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => setIsFineTuneDialogOpen(false)}
+                            className="border-primary/30"
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleFineTuneSubmit}
+                            className="bg-primary text-primary-foreground hover:bg-primary/90"
+                        >
+                            Start Training
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
             </div>
         </div>
     );

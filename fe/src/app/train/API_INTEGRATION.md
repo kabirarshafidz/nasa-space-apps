@@ -1,10 +1,10 @@
 # API Integration Summary
 
 ## Overview
-The train page has been updated to use the correct API endpoint at `http://10.16.146.135:8000/train` and match the parameters defined in `api/main.py`.
+The train page has been updated to use the correct API endpoint at `http://{process.env.NEXT_PUBLIC_API_ENDPOINT}:8000/train` and match the parameters defined in `api/main.py`.
 
 ## API Endpoint
-- **URL**: `http://10.16.146.135:8000/train`
+- **URL**: `http://{process.env.NEXT_PUBLIC_API_ENDPOINT}:8000/train`
 - **Method**: POST
 - **Content-Type**: multipart/form-data
 

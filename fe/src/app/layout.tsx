@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Overpass } from "next/font/google";
 import "./globals.css";
 import NavbarNasa from "@/components/navbar";
+import { NuqsAdapter } from "nuqs/adapters/next/app";
+import { AuthProvider } from "@/components/auth-provider";
 
 const overpassSans = Overpass({
     variable: "--font-overpass-sans",
@@ -28,8 +30,14 @@ export default function RootLayout({
             <body
                 className={`${overpassSans.variable} ${geistMono.variable} antialiased dark`}
             >
-                <NavbarNasa />
-                <div className="bg-black/60 h-screen pt-16">{children}</div>
+                <AuthProvider>
+                    <NuqsAdapter>
+                        <NavbarNasa />
+                        <div className="bg-black/60 h-screen pt-16">
+                            {children}
+                        </div>
+                    </NuqsAdapter>
+                </AuthProvider>
             </body>
         </html>
     );
