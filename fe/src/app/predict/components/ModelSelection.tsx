@@ -249,7 +249,7 @@ export function ModelSelection({
             <div className="border-2 border-dashed rounded-lg p-8 text-center bg-muted/30">
               <Upload className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-50" />
               <p className="text-sm text-muted-foreground mb-4">
-                Upload your model file (.pkl, .joblib, .bks)
+                Upload your model file (.pkl, .joblib)
               </p>
               <Button variant="outline" disabled>
                 Choose File

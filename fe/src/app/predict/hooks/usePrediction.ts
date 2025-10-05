@@ -34,7 +34,6 @@ export function usePrediction() {
         "model_name",
         selectedModel
           .replace("models/", "")
-          .replace(".bks", "")
           .replace(".pkl", "")
           .replace(".joblib", "")
           .replace("default/", "")
@@ -45,7 +44,7 @@ export function usePrediction() {
 
       if (predictionType === "batch" && uploadedFile) {
         csvText = await uploadedFile.text();
-        
+
         try {
           metadataArray = parseCSVMetadata(csvText);
         } catch (error) {

@@ -205,7 +205,6 @@ export default function PredictPage() {
         "model_name",
         selectedModel
           .replace("models/", "")
-          .replace(".bks", "")
           .replace(".pkl", "")
           .replace(".joblib", "")
           .replace("default/", "")
@@ -703,31 +702,27 @@ export default function PredictPage() {
               <CardContent>
                 <div className="space-y-4">
                   <div
-                    className={`p-4 rounded-lg ${
-                      positiveCount > 0
+                    className={`p-4 rounded-lg ${positiveCount > 0
                         ? "bg-green-50 dark:bg-green-950"
                         : "bg-blue-50 dark:bg-blue-950"
-                    }`}
+                      }`}
                   >
                     <h4
-                      className={`font-semibold mb-2 ${
-                        positiveCount > 0
+                      className={`font-semibold mb-2 ${positiveCount > 0
                           ? "text-green-800 dark:text-green-200"
                           : "text-blue-800 dark:text-blue-200"
-                      }`}
+                        }`}
                     >
                       {positiveCount > 0
-                        ? `${positiveCount} Exoplanet${
-                            positiveCount > 1 ? "s" : ""
-                          } Detected!`
+                        ? `${positiveCount} Exoplanet${positiveCount > 1 ? "s" : ""
+                        } Detected!`
                         : "No Exoplanets Detected"}
                     </h4>
                     <p
-                      className={`text-sm ${
-                        positiveCount > 0
+                      className={`text-sm ${positiveCount > 0
                           ? "text-green-700 dark:text-green-300"
                           : "text-blue-700 dark:text-blue-300"
-                      }`}
+                        }`}
                     >
                       Average Confidence: {(avgConfidence * 100).toFixed(1)}% |
                       Total Predictions: {predictionResults.feature_count} |
@@ -840,11 +835,10 @@ export default function PredictPage() {
                                   <div className="flex items-center justify-end gap-3">
                                     <div className="flex-1 max-w-[120px] bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                                       <div
-                                        className={`h-2 rounded-full transition-all ${
-                                          item.label === 1
+                                        className={`h-2 rounded-full transition-all ${item.label === 1
                                             ? "bg-gradient-to-r from-green-400 to-green-600"
                                             : "bg-gradient-to-r from-gray-400 to-gray-500"
-                                        }`}
+                                          }`}
                                         style={{ width: `${item.prob * 100}%` }}
                                       ></div>
                                     </div>
@@ -1140,18 +1134,17 @@ export default function PredictPage() {
                                           {classification.toi}
                                         </span>
                                         <span
-                                          className={`px-2 py-0.5 rounded text-xs font-medium ${
-                                            classification.type_name ===
-                                            "Sub-Neptune"
+                                          className={`px-2 py-0.5 rounded text-xs font-medium ${classification.type_name ===
+                                              "Sub-Neptune"
                                               ? "bg-blue-500/30 text-blue-200"
                                               : classification.type_name ===
                                                 "Ultra-Giant"
-                                              ? "bg-purple-500/30 text-purple-200"
-                                              : classification.type_name ===
-                                                "Super-Earth"
-                                              ? "bg-green-500/30 text-green-200"
-                                              : "bg-gray-500/30 text-gray-200"
-                                          }`}
+                                                ? "bg-purple-500/30 text-purple-200"
+                                                : classification.type_name ===
+                                                  "Super-Earth"
+                                                  ? "bg-green-500/30 text-green-200"
+                                                  : "bg-gray-500/30 text-gray-200"
+                                            }`}
                                         >
                                           {classification.type_name}
                                         </span>

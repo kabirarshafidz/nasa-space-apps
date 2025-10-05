@@ -95,10 +95,9 @@ export async function GET() {
 
             if (s3Response.Contents) {
                 for (const obj of s3Response.Contents) {
-                    if (obj.Key && (obj.Key.endsWith(".joblib") || obj.Key.endsWith(".bks") || obj.Key.endsWith(".pkl"))) {
+                    if (obj.Key && (obj.Key.endsWith(".joblib") || obj.Key.endsWith(".pkl"))) {
                         const modelName = obj.Key.replace("default/", "")
                             .replace(".joblib", "")
-                            .replace(".bks", "")
                             .replace(".pkl", "");
 
                         defaultModels.push({

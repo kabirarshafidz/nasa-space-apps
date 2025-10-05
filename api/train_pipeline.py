@@ -789,9 +789,9 @@ async def train_with_cv(
 
         # Save model to tempfile then upload to R2
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        model_filename = f"models/{model_name}_{timestamp}.bks"
+        model_filename = f"models/{model_name}_{timestamp}.pkl"
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".bks") as tmp:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pkl") as tmp:
             joblib.dump(model_to_save, tmp.name)
             tmp.seek(0)
             with open(tmp.name, "rb") as f:
@@ -1000,9 +1000,9 @@ async def list_models():
         models = []
         for obj in response["Contents"]:
             key = obj["Key"]
-            if key.endswith(".bks") or key.endswith(".pkl"):
+            if key.endswith(".pkl"):
                 model_name = (
-                    key.replace("models/", "").replace(".bks", "").replace(".pkl", "")
+                    key.replace("models/", "").replace(".pkl", "")
                 )
                 models.append(
                     {
