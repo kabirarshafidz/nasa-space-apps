@@ -1,0 +1,20 @@
+{
+    "service": {
+        "name": "nasa-exoplanet-api",
+        "type": "docker"
+    },
+    "build": {
+        "dockerfile": "Dockerfile"
+    },
+    "deploy": {
+        "port": 8000,
+        "healthcheck": {
+            "path": "/",
+            "timeout": 10
+        }
+    },
+    "env": {
+        "PYTHONUNBUFFERED": "1",
+        "MATPLOTLIB_BACKEND": "Agg"
+    }
+}

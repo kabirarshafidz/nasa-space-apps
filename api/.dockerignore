@@ -1,0 +1,41 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+bin/
+lib/
+lib64/
+include/
+share/
+pyvenv.cfg
+
+# Logs
+*.log
+server.log
+train_pipeline.log
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment variables
+.env
+.env.local
+
+# Lock files (will use requirements.txt)
+uv.lock
+.python-version
+
+# Other
+*.md
+
