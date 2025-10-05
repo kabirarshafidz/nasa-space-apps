@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useTrainParams } from "./useTrainParams";
 import {
     Stepper,
     StepperIndicator,
@@ -29,7 +30,7 @@ import {
     TrainingSessionList,
 } from "./components";
 import { TrainingHistory } from "./components/TrainingHistory";
-import { getTrainingSessions } from "./actions";
+import { getTrainingSessions, getTrainingSession } from "./actions";
 
 interface TrainingSession {
     id: string;
@@ -95,21 +96,66 @@ interface CsvData {
     [key: string]: string | number;
 }
 
+interface TrainingEntryData {
+    id: string;
+    result: TrainingResult;
+    modelS3Key: string | null;
+    createdAt: Date;
+    modelId: string | null;
+    modelName: string | null;
+    modelF1Score: string | null;
+}
+
 export default function TrainPage() {
+    // URL search params for session and step
+    const [params, setParams] = useTrainParams();
+    const selectedSessionId = params.session || null;
+    const currentStep = params.step;
+    const entryId = params.entryId || null;
+
     // Session management
     const [sessions, setSessions] = useState<TrainingSession[]>([]);
-    const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
     const [showTrainingSteps, setShowTrainingSteps] = useState(false);
     const [isLoadingSessions, setIsLoadingSessions] = useState(true);
     const [usingExistingCSV, setUsingExistingCSV] = useState(false);
-
-    const [currentStep, setCurrentStep] = useState(1);
     const maxSize = 100 * 1024 * 1024; // 100MB
 
     // Load sessions on mount
     useEffect(() => {
         loadSessions();
     }, []);
+
+    // Load training entry result when entryId changes
+    useEffect(() => {
+        const loadTrainingEntry = async () => {
+            if (!entryId || !selectedSessionId) return;
+
+            try {
+                const response = await fetch(`/api/training/entries?sessionId=${selectedSessionId}`);
+                const data = await response.json();
+
+                if (data.success && data.entries.length > 0) {
+                    const entry = data.entries.find((e: TrainingEntryData) => e.id === entryId);
+                    if (entry && entry.result) {
+                        setTrainingResult(entry.result);
+                        setModelName(entry.modelName || "");
+                    }
+                }
+
+                // Check if session has CSV to set usingExistingCSV flag
+                const sessionResult = await getTrainingSession(selectedSessionId);
+                if (sessionResult.success && sessionResult.session) {
+                    const hasCSV = !!sessionResult.session.csvUrl;
+                    console.log("Session has CSV:", hasCSV, "URL:", sessionResult.session.csvUrl);
+                    setUsingExistingCSV(hasCSV);
+                }
+            } catch (error) {
+                console.error("Error loading training entry:", error);
+            }
+        };
+
+        loadTrainingEntry();
+    }, [entryId, selectedSessionId]);
 
     const loadSessions = async () => {
         setIsLoadingSessions(true);
@@ -121,17 +167,34 @@ export default function TrainPage() {
     };
 
     const handleSessionSelect = (sessionId: string) => {
-        setSelectedSessionId(sessionId);
+        setParams({ session: sessionId, step: 1, entryId: "" });
         setShowTrainingSteps(false); // Keep on session list to show history
-        setCurrentStep(1);
     };
 
-    const handleStartTraining = (sessionId: string, hasCSV: boolean) => {
-        setSelectedSessionId(sessionId);
+    const handleStartTraining = async (sessionId: string, hasCSV: boolean) => {
+        // If continuing with existing session, load the latest training entry
+        if (hasCSV) {
+            try {
+                const response = await fetch(`/api/training/entries?sessionId=${sessionId}`);
+                const data = await response.json();
+
+                if (data.success && data.entries.length > 0) {
+                    const latestEntry = data.entries[0]; // Already sorted by createdAt desc
+                    setParams({ session: sessionId, step: 4, entryId: latestEntry.id });
+                    setShowTrainingSteps(true);
+                    setUsingExistingCSV(hasCSV);
+                    return;
+                }
+            } catch (error) {
+                console.error("Error loading latest entry:", error);
+            }
+        }
+
+        // New session or no entries found
+        setParams({ session: sessionId, step: hasCSV ? 3 : 1, entryId: "" });
         setShowTrainingSteps(true);
         setUsingExistingCSV(hasCSV);
         // Skip to step 3 (configure) if CSV already uploaded, otherwise start at step 1 (upload)
-        setCurrentStep(hasCSV ? 3 : 1);
     };
 
     // Step 1: File upload
@@ -258,11 +321,11 @@ export default function TrainPage() {
             // Parse CSV and move to preview
             const success = await parseCSV();
             if (success) {
-                setCurrentStep(2);
+                setParams({ step: 2 });
             }
         } else if (currentStep === 2) {
             // Move to configuration
-            setCurrentStep(3);
+            setParams({ step: 3 });
         } else if (currentStep === 3) {
             // Validate configuration
             if (!modelName.trim()) {
@@ -277,14 +340,27 @@ export default function TrainPage() {
     // Handle previous step
     const handlePrevious = () => {
         if (currentStep > 1) {
-            setCurrentStep(currentStep - 1);
+            setParams({ step: currentStep - 1 });
         }
     };
 
     // Handle training
     const handleTrain = async () => {
+        console.log("=== handleTrain called ===");
+        console.log("selectedSessionId:", selectedSessionId);
+        console.log("file:", file);
+        console.log("usingExistingCSV:", usingExistingCSV);
+        console.log("modelName:", modelName);
+        console.log("modelType:", modelType);
+
         if (!selectedSessionId) {
             setTrainingError("No training session selected");
+            return;
+        }
+
+        // Check if we have a file or are using existing CSV
+        if (!file && !usingExistingCSV) {
+            setTrainingError("No CSV file provided. Please upload a file or use an existing session with data.");
             return;
         }
 
@@ -293,7 +369,7 @@ export default function TrainPage() {
         setIsTraining(true);
         setTrainingError(null);
         setTrainingProgress(0);
-        setCurrentStep(4);
+        setParams({ step: 4 });
 
         try {
             // Simulate progress
@@ -308,9 +384,15 @@ export default function TrainPage() {
             }, 500);
 
             const formData = new FormData();
+
+            // Only append file if we have a new file upload
             if (file && file.file instanceof File) {
+                console.log("Appending file to formData");
                 formData.append("file", file.file);
+            } else {
+                console.log("No file to append, using existing CSV from session");
             }
+
             formData.append("model_name", trainModelType);
             formData.append("model_params", modelParams);
             formData.append("cv_folds", cvFolds);
@@ -322,6 +404,16 @@ export default function TrainPage() {
             formData.append("training_session_id", selectedSessionId);
             formData.append("user_model_name", modelName);
 
+            console.log("Sending training request to API...");
+            console.log("FormData contents:");
+            for (const [key, value] of formData.entries()) {
+                if (value instanceof File) {
+                    console.log(`  ${key}: File(${value.name}, ${value.size} bytes)`);
+                } else {
+                    console.log(`  ${key}: ${value}`);
+                }
+            }
+
             const response = await fetch("/api/training/save-result", {
                 method: "POST",
                 body: formData,
@@ -331,13 +423,21 @@ export default function TrainPage() {
 
             if (!response.ok) {
                 const error = await response.json();
-                throw new Error(error.detail || "Training failed");
+                console.error("Training API error:", error);
+                throw new Error(error.detail || error.error || "Training failed");
             }
 
             const result = await response.json();
+            console.log("Training result:", result);
             setTrainingResult(result);
             setTrainingProgress(100);
+
+            // Update URL params with the new entry ID
+            if (result.entryId) {
+                setParams({ entryId: result.entryId });
+            }
         } catch (error) {
+            console.error("Training error:", error);
             setTrainingError(
                 error instanceof Error ? error.message : "Training failed",
             );
@@ -354,6 +454,7 @@ export default function TrainPage() {
 
     // Handle fine-tune submit
     const handleFineTuneSubmit = async () => {
+        console.log("=== handleFineTuneSubmit called ===");
         if (!modelName.trim()) {
             setTrainingError("Please enter a model name");
             return;
@@ -361,13 +462,27 @@ export default function TrainPage() {
         setIsFineTuneDialogOpen(false);
         setTrainingResult(null);
         setTrainingError(null);
+
+        // Ensure we're flagged as using existing CSV for fine-tuning
+        if (!file && selectedSessionId) {
+            console.log("Fine-tuning without new file, verifying session has CSV");
+            const sessionResult = await getTrainingSession(selectedSessionId);
+            if (sessionResult.success && sessionResult.session?.csvUrl) {
+                console.log("Session has CSV URL, setting usingExistingCSV to true");
+                setUsingExistingCSV(true);
+            } else {
+                console.error("Session doesn't have CSV URL!");
+                setTrainingError("Session doesn't have a CSV file. Please upload a new file.");
+                return;
+            }
+        }
+
         await handleTrain();
     };
 
     const handleTrainAnother = () => {
         setShowTrainingSteps(false);
-        setSelectedSessionId(null);
-        setCurrentStep(1);
+        setParams({ session: "", step: 1, entryId: "" });
         setUsingExistingCSV(false);
         setCsvData([]);
         setCsvHeaders([]);
@@ -538,7 +653,7 @@ export default function TrainPage() {
                                     variant="outline"
                                     onClick={() => {
                                         setShowTrainingSteps(false);
-                                        setSelectedSessionId(null);
+                                        setParams({ session: "", step: 1, entryId: "" });
                                     }}
                                     disabled={isTraining}
                                     className="border-primary/30 bg-primary/5 hover:bg-primary/20 text-primary-foreground"
@@ -595,7 +710,7 @@ export default function TrainPage() {
                 open={isFineTuneDialogOpen}
                 onOpenChange={setIsFineTuneDialogOpen}
             >
-                <DialogContent className="sm:max-w-5xl bg-background border-primary/30 max-w-4xl max-h-[90vh] overflow-y-auto">
+                <DialogContent className="sm:max-w-5xl bg-background border-primary/30 max-w-4xl max-h-[90vh] flex flex-col">
                     <DialogHeader>
                         <DialogTitle className="text-primary-foreground">
                             Fine-Tune Model Parameters
@@ -605,7 +720,7 @@ export default function TrainPage() {
                             with the same dataset.
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="py-4">
+                    <div className="py-4 overflow-y-auto flex-1">
                         <ConfigureModelStep
                             modelName={modelName}
                             setModelName={setModelName}
@@ -628,7 +743,7 @@ export default function TrainPage() {
                             trainingError={trainingError}
                         />
                     </div>
-                    <DialogFooter>
+                    <DialogFooter className="border-t border-primary/30 pt-4 mt-4">
                         <Button
                             variant="outline"
                             onClick={() => setIsFineTuneDialogOpen(false)}

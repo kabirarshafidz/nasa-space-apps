@@ -39,6 +39,12 @@ export async function POST(req: NextRequest) {
         const csvFile = formData.get("file") as File | null;
         const userModelName = formData.get("user_model_name") as string;
 
+        console.log("=== Training API Route ===");
+        console.log("trainingSessionId:", trainingSessionId);
+        console.log("csvFile:", csvFile ? `File(${csvFile.name}, ${csvFile.size} bytes)` : "null");
+        console.log("userModelName:", userModelName);
+        console.log("FormData keys:", Array.from(formData.keys()));
+
         if (!trainingSessionId) {
             return NextResponse.json(
                 { success: false, error: "Training session ID is required" },
@@ -68,6 +74,10 @@ export async function POST(req: NextRequest) {
         // Upload CSV to S3 if provided and not already uploaded
         let csvS3Key = ts.csvS3Key;
         let csvUrl = ts.csvUrl;
+
+        console.log("Training session CSV info:");
+        console.log("  csvS3Key:", csvS3Key);
+        console.log("  csvUrl:", csvUrl);
 
         if (csvFile && !csvS3Key) {
             const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -100,13 +110,33 @@ export async function POST(req: NextRequest) {
         // Forward request to Python API
         const pythonApiUrl = `${process.env.NEXT_PUBLIC_API_ENDPOINT}/train/cv`;
 
+        // Create form data for Python API, adding csv_url if no file provided
+        const pythonFormData = new FormData();
+        for (const [key, value] of formData.entries()) {
+            pythonFormData.append(key, value);
+        }
+        if (!csvFile && csvUrl) {
+            console.log("No file provided, appending csv_url:", csvUrl);
+            pythonFormData.append("csv_url", csvUrl);
+        } else if (!csvFile && !csvUrl) {
+            console.error("ERROR: No file and no csv_url available!");
+            return NextResponse.json(
+                { success: false, error: "No CSV file or URL available for training" },
+                { status: 400 }
+            );
+        }
+
+        console.log("Forwarding to Python API:", pythonApiUrl);
+        console.log("Python FormData keys:", Array.from(pythonFormData.keys()));
+
         const pythonResponse = await fetch(pythonApiUrl, {
             method: "POST",
-            body: formData,
+            body: pythonFormData,
         });
 
         if (!pythonResponse.ok) {
             const error = await pythonResponse.json();
+            console.error("Python API error response:", error);
             return NextResponse.json(
                 { success: false, error: error.detail || "Training failed" },
                 { status: pythonResponse.status }
@@ -114,6 +144,7 @@ export async function POST(req: NextRequest) {
         }
 
         const result = await pythonResponse.json();
+        console.log("Python API success, result keys:", Object.keys(result));
 
         // Extract model S3 key from model_url
         const modelS3Key = result.model_url.split("/").pop() || result.model_url;
@@ -152,6 +183,7 @@ export async function POST(req: NextRequest) {
 
     } catch (error) {
         console.error("Error in training proxy:", error);
+        console.error("Error stack:", error instanceof Error ? error.stack : "N/A");
         return NextResponse.json(
             {
                 success: false,

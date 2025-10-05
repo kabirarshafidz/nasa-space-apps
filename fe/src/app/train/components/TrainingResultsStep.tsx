@@ -21,6 +21,7 @@ import {
 } from "recharts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TrainingHistory } from "./TrainingHistory";
+import { ImageZoom } from "@/components/kibo-ui/image-zoom";
 
 interface TrainingResult {
     model_name: string;
@@ -511,6 +512,7 @@ export function TrainingResultsStep({
                                                 ROC Curve
                                             </h4>
                                             <div className="flex justify-center">
+                                              <ImageZoom>
                                                 <Image
                                                     src={
                                                         trainingResult.charts
@@ -521,6 +523,7 @@ export function TrainingResultsStep({
                                                     height={450}
                                                     className="max-w-full h-auto rounded"
                                                 />
+                                              </ImageZoom>
                                             </div>
                                         </div>
                                     </TabsContent>
@@ -533,6 +536,7 @@ export function TrainingResultsStep({
                                                 Precision-Recall Curve
                                             </h4>
                                             <div className="flex justify-center">
+                                            <ImageZoom>
                                                 <Image
                                                     src={
                                                         trainingResult.charts
@@ -543,6 +547,7 @@ export function TrainingResultsStep({
                                                     height={450}
                                                     className="max-w-full h-auto rounded"
                                                 />
+                                            </ImageZoom>
                                             </div>
                                         </div>
                                     </TabsContent>
@@ -558,6 +563,7 @@ export function TrainingResultsStep({
                                                 Confusion Matrix
                                             </h4>
                                             <div className="flex justify-center">
+                                              <ImageZoom>
                                                 <Image
                                                     src={
                                                         trainingResult.charts
@@ -568,6 +574,7 @@ export function TrainingResultsStep({
                                                     height={450}
                                                     className="max-w-full h-auto rounded"
                                                 />
+                                              </ImageZoom>
                                             </div>
                                         </div>
                                     </TabsContent>
@@ -583,6 +590,7 @@ export function TrainingResultsStep({
                                                 Feature Importance
                                             </h4>
                                             <div className="flex justify-center">
+                                              <ImageZoom>
                                                 <Image
                                                     src={
                                                         trainingResult.charts
@@ -593,6 +601,7 @@ export function TrainingResultsStep({
                                                     height={450}
                                                     className="max-w-full h-auto rounded"
                                                 />
+                                              </ImageZoom>
                                             </div>
                                         </div>
                                     </TabsContent>
@@ -605,6 +614,7 @@ export function TrainingResultsStep({
                                                 Cross-Validation Metrics by Fold
                                             </h4>
                                             <div className="flex justify-center">
+                                              <ImageZoom >
                                                 <Image
                                                     src={
                                                         trainingResult.charts
@@ -615,6 +625,7 @@ export function TrainingResultsStep({
                                                     height={450}
                                                     className="max-w-full h-auto rounded"
                                                 />
+                                              </ImageZoom>
                                             </div>
                                         </div>
                                     </TabsContent>
@@ -630,6 +641,7 @@ export function TrainingResultsStep({
                                                 Feature Correlation Heatmap
                                             </h4>
                                             <div className="flex justify-center">
+                                              <ImageZoom>
                                                 <Image
                                                     src={
                                                         trainingResult.charts
@@ -640,6 +652,7 @@ export function TrainingResultsStep({
                                                     height={450}
                                                     className="max-w-full h-auto rounded"
                                                 />
+                                              </ImageZoom>
                                             </div>
                                         </div>
                                     </TabsContent>

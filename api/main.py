@@ -10,6 +10,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import (
     roc_auc_score,
     log_loss,
@@ -23,7 +24,12 @@ import pickle
 import json
 from pathlib import Path
 import io
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import seaborn as sns
 from fastapi.middleware.cors import CORSMiddleware
+import base64
 
 app = FastAPI(
     title="TESS ML API", description="Train and inference API for exoplanet detection"
@@ -598,6 +604,193 @@ async def upload_model(
                 "metrics": model_data.get("metrics"),
             }
 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/classify/planet-types")
+async def classify_planet_types(
+    toi_list: List[str] = Form(...),
+    features_json: str = Form(...),
+):
+    """
+    Classify planet types using KNN based on type_labels.csv ground truth.
+    Returns a base64-encoded scatter plot showing the classification.
+    """
+    try:
+        # Load type labels ground truth
+        type_labels_path = Path("data/type_labels.csv")
+        if not type_labels_path.exists():
+            raise HTTPException(
+                status_code=404,
+                detail="type_labels.csv not found. Please ensure it exists in the data/ directory."
+            )
+        
+        gt = pd.read_csv(type_labels_path, comment="#")
+        
+        # Parse input features
+        features_list = json.loads(features_json)
+        
+        # Configuration for planet type classification
+        CONFIG = {
+            "label_col": "type_cluster",
+            "features": ["pl_rade", "pl_insol", "pl_eqt", "pl_orbper", "st_teff", "st_rad"],
+            "knn_k": 5,
+            "prob_threshold_unknown": 0.60,
+            "label_name_map": {
+                0.0: "Sub-Neptune",
+                1.0: "Ultra-Giant",
+                2.0: "Super-Earth",
+                -1.0: "Unknown"
+            },
+        }
+        
+        # Build feature matrix from ground truth
+        def build_X(df: pd.DataFrame, features: list) -> pd.DataFrame:
+            return df[[c for c in features if c in df.columns]].copy()
+        
+        # Prepare ground truth data
+        X_gt_all = build_X(gt, CONFIG["features"])
+        if X_gt_all.empty:
+            raise HTTPException(
+                status_code=400,
+                detail="None of the configured features exist in type_labels.csv"
+            )
+        
+        # Filter ground truth: remove rows with too many missing values
+        max_miss = 0.5
+        miss_frac = X_gt_all.isna().mean(axis=1)
+        mask_row_ok = miss_frac <= max_miss
+        X_gt = X_gt_all.loc[mask_row_ok]
+        
+        # Get labels
+        y_gt = pd.to_numeric(gt.loc[mask_row_ok, CONFIG["label_col"]], errors="coerce")
+        mask_label_ok = y_gt.notna() & y_gt.isin([0.0, 1.0, 2.0, -1.0])
+        X_gt = X_gt.loc[mask_label_ok]
+        y_gt = y_gt.loc[mask_label_ok].astype(float).values
+        
+        if X_gt.empty:
+            raise HTTPException(
+                status_code=400,
+                detail="No valid ground truth rows after filtering"
+            )
+        
+        # Create preprocessing pipeline
+        imputer = KNNImputer(n_neighbors=5, weights="distance")
+        scaler = StandardScaler()
+        
+        # Fit on ground truth
+        X_gt_imp = imputer.fit_transform(X_gt.values)
+        Z_gt = scaler.fit_transform(X_gt_imp)
+        
+        # Train KNN classifier
+        clf = KNeighborsClassifier(n_neighbors=CONFIG["knn_k"], weights="distance")
+        clf.fit(Z_gt, y_gt)
+        
+        # Prepare new data for classification
+        df_new = pd.DataFrame(features_list)
+        X_new_all = build_X(df_new, CONFIG["features"])
+        
+        # Filter new data
+        miss_frac_new = X_new_all.isna().mean(axis=1)
+        idx_ok = miss_frac_new.index[miss_frac_new <= max_miss]
+        
+        results = []
+        if len(idx_ok) > 0:
+            X_new_imp = imputer.transform(X_new_all.loc[idx_ok].values)
+            Z_new = scaler.transform(X_new_imp)
+            
+            probs = clf.predict_proba(Z_new)
+            preds = probs.argmax(axis=1).astype(float)
+            conf = probs.max(axis=1)
+            
+            # Mark low confidence as Unknown
+            preds = np.where(conf < CONFIG["prob_threshold_unknown"], -1.0, preds)
+            
+            for i, idx in enumerate(idx_ok):
+                results.append({
+                    "toi": toi_list[idx],
+                    "type_pred": int(preds[i]),
+                    "type_confidence": float(conf[i]),
+                    "type_name": CONFIG["label_name_map"].get(preds[i], "Unknown"),
+                    "features": {k: float(v) if pd.notna(v) else None 
+                               for k, v in X_new_all.loc[idx].items()}
+                })
+        
+        # Generate scatter plot visualization
+        plt.figure(figsize=(12, 8))
+        
+        # Use first two features for 2D visualization (pl_rade vs pl_insol)
+        if "pl_rade" in CONFIG["features"] and "pl_insol" in CONFIG["features"]:
+            feat_x, feat_y = "pl_rade", "pl_insol"
+            
+            # Plot ground truth
+            colors_gt = {0.0: "#3b82f6", 1.0: "#8b5cf6", 2.0: "#10b981", -1.0: "#6b7280"}
+            labels_gt = {0.0: "Sub-Neptune (GT)", 1.0: "Ultra-Giant (GT)", 
+                        2.0: "Super-Earth (GT)", -1.0: "Unknown (GT)"}
+            
+            for label_val in [0.0, 1.0, 2.0]:
+                mask = y_gt == label_val
+                if mask.any():
+                    plt.scatter(
+                        X_gt[feat_x][mask],
+                        X_gt[feat_y][mask],
+                        c=colors_gt[label_val],
+                        alpha=0.3,
+                        s=30,
+                        label=labels_gt[label_val]
+                    )
+            
+            # Plot new predictions
+            if len(idx_ok) > 0:
+                colors_pred = {0.0: "#3b82f6", 1.0: "#8b5cf6", 2.0: "#10b981", -1.0: "#6b7280"}
+                labels_pred = {0.0: "Sub-Neptune (Pred)", 1.0: "Ultra-Giant (Pred)", 
+                              2.0: "Super-Earth (Pred)", -1.0: "Unknown (Pred)"}
+                
+                for i, idx in enumerate(idx_ok):
+                    pred_label = preds[i]
+                    plt.scatter(
+                        X_new_all.loc[idx, feat_x],
+                        X_new_all.loc[idx, feat_y],
+                        c=colors_pred[pred_label],
+                        marker='*',
+                        s=300,
+                        edgecolors='black',
+                        linewidths=2,
+                        label=labels_pred[pred_label] if i == 0 else ""
+                    )
+                    
+                    # Add TOI label
+                    plt.annotate(
+                        toi_list[idx],
+                        (X_new_all.loc[idx, feat_x], X_new_all.loc[idx, feat_y]),
+                        xytext=(5, 5),
+                        textcoords='offset points',
+                        fontsize=9,
+                        fontweight='bold'
+                    )
+        
+        plt.xlabel("Planet Radius (Earth Radii)", fontsize=12)
+        plt.ylabel("Insolation Flux (Earth Flux)", fontsize=12)
+        plt.title("Planet Type Classification using KNN", fontsize=14, fontweight='bold')
+        plt.legend(loc='best', fontsize=9)
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        
+        # Convert plot to base64
+        buffer = io.BytesIO()
+        plt.savefig(buffer, format='png', dpi=150, bbox_inches='tight')
+        buffer.seek(0)
+        image_base64 = base64.b64encode(buffer.read()).decode('utf-8')
+        plt.close()
+        
+        return {
+            "classifications": results,
+            "chart_base64": image_base64,
+            "total_classified": len(results),
+            "ground_truth_samples": len(y_gt)
+        }
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
