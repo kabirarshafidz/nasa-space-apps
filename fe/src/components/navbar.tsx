@@ -11,6 +11,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import Link from "next/link";
+import { Image } from "next/image";
 
 // Navigation links array to be used in both desktop and mobile menus
 const navigationLinks = [
@@ -21,11 +22,12 @@ const navigationLinks = [
 
 export default function NavbarNasa() {
   return (
-    <header className="border-b px-4 md:px-6 fixed h-16 w-screen bg-black z-[9999]">
+    <header className="px-4 md:px-6 fixed h-16 w-screen bg-gray-800/10 z-[9999] backdrop-blur-xs border-b border-gray-900">
       <div className="flex h-16 items-center justify-between gap-4">
         {/* Left side */}
         <div className="flex items-center gap-2">
           {/* Mobile menu trigger */}
+
           <Popover>
             <PopoverTrigger asChild>
               <Button
@@ -81,7 +83,7 @@ export default function NavbarNasa() {
           {/* Main nav */}
           <div className="flex items-center gap-6">
             <Link href="/" className="text-primary hover:text-primary/90">
-              B3K4SI
+              <img src="/logo2x.png" alt="logo" width={100} height={100} />
             </Link>
             {/* Navigation menu */}
             <NavigationMenu className="max-md:hidden">
